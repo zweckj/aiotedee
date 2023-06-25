@@ -1,12 +1,8 @@
-# Python Tedee Client Package
+# Python Tedee Async Client Package
 
-This is a Tedee Lock Client package.
+This is a Tedee Lock Client package. It is an async implementation of [joerg65's original package](https://github.com/joerg65/pytedee.git).
 
-Download:
-
-git clone https://github.com/joerg65/pytedee.git
-
-Install:
+## Install:
 
 pipenv install -e .
 
@@ -14,7 +10,8 @@ or
 
 python3 setup.py install
 
-Try it with the example.py:
+## Try it out
+with the example.py:
 
 - Generate personal key. Instructions: https://tedee-tedee-api-doc.readthedocs-hosted.com/en/latest/howtos/authenticate.html#personal-access-key
   Minimal scopes required for enable integration are:

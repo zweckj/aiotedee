@@ -11,6 +11,7 @@ __pycache__/
 *.so
 
 pytedee/pytedee/example2.py
+config.json
 
 # Distribution / packaging
 .Python

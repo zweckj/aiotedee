@@ -33,50 +33,67 @@ class Lock(object):
         self._is_connected = False
         self._is_charging = False
         
-    def get_name(self):
+    @property
+    def name(self):
         return self._name
     
-    def get_id(self):
+    @property
+    def id(self):
         return self._id
     
+    @property
     def is_state_locked(self):
         return self._state == 6
     
+    @property
     def is_state_unlocked(self):
         return self._state == 2
     
-    def get_state(self):
+    @property
+    def state(self):
         return self._state
     
-    def set_state(self, status):
+    @state.setter
+    def state(self, status):
         self._state = status
         
-    def get_battery_level(self):
+    @property
+    def battery_level(self):
         return self._battery_level
     
-    def set_battery_level(self, level):
+    @battery_level.setter
+    def battery_level(self, level):
         self._battery_level = level
-        
-    def set_connected(self, connected):
+
+    @property
+    def is_connected(self):
+        return self._is_connected 
+    
+    @is_connected.setter
+    def is_connected(self, connected):
         self._is_connected = connected
     
-    def is_connected(self):
-        return self._is_connected
-    
-    def get_is_charging(self):
+    @property
+    def is_charging(self):
         return self._is_charging
     
-    def set_is_charging(self, isCharging):
+    @is_charging.setter
+    def is_charging(self, isCharging):
         self._is_charging = isCharging
-        
-    def set_is_enabled_pullspring(self, isEnabled):
-        self._is_enabled_pullspring = isEnabled
-        
-    def get_is_enabled_pullspring(self):
+       
+    @property
+    def is_enabled_pullspring(self):
         return self._is_enabled_pullspring
+    
+    @is_enabled_pullspring.setter
+    def is_enabled_pullspring(self, isEnabled):
+        self._is_enabled_pullspring = isEnabled
+    
+    @property
+    def duration_pullspring(self):
+        return self._duration_pullspring
         
-    def set_duration_pullspring(self, duration):
+    @duration_pullspring.setter
+    def duration_pullspring(self, duration):
         self._duration_pullspring = duration
         
-    def get_duration_pullspring(self):
-        return self._duration_pullspring

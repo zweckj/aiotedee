@@ -44,7 +44,12 @@ class Lock(object):
     
     @property
     def type(self):
-        return self._type
+        if self._type == 2:
+            return "Tedee Pro"
+        elif self._type == 4:
+            return "Tedee Go"
+        else:
+            return "Unknown Model"
     
     @property
     def is_state_locked(self):

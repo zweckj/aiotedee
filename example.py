@@ -18,7 +18,7 @@ async def main():
 
     client = await TedeeClient.create(personalToken)
     print ("Token: " + str(client._personalToken))
-    locks = client.get_locks()
+    locks = client.locks
     for lock in locks:
         print("----------------------------------------------")
         print("Lock name: " + lock.name)
@@ -27,10 +27,11 @@ async def main():
         await client.get_state()
         print("Is Locked: " + str(client.is_locked(lock.id)))
         print("Is Unlocked: " + str(client.is_unlocked(lock.id)))
-        await client.lock(lock.id)
-        await asyncio.sleep(7)
-        await client.unlock(lock.id)
+        # await client.lock(lock.id)
+        # await asyncio.sleep(7)
+        # await client.unlock(lock.id)
         # await asyncio.sleep(10)
         # await client.open(lock.id)
+        print(await client.update(lock.id))
 
 asyncio.run(main())

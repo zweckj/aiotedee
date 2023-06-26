@@ -152,13 +152,11 @@ class TedeeClient(object):
                     _LOGGER.debug("result: %s", r)
                     result = r["result"]
                     try:
-                        success = result["success"]
-                        if success:
-                            for lock in self._sensor_list:
-                                if id == lock.id:
-                                    lock.battery_level = result["level"]
-                                    _LOGGER.debug("id: %d, battery level: %d", id, lock.battery_level)
-                        return success
+                        for lock in self._sensor_list:
+                            if id == lock.id:
+                                lock.battery_level = result["level"]
+                                _LOGGER.debug("id: %d, battery level: %d", id, lock.battery_level)
+                        return True
                     except KeyError:
                         _LOGGER.error("result: %s", result)
                         return False

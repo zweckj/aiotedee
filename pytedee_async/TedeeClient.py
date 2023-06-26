@@ -61,7 +61,8 @@ class TedeeClient(object):
                     for x in result:            
                         id = x["id"]
                         name = x["name"]
-                        lock = Lock(name, id)
+                        type = x["type"]
+                        lock = Lock(name, id, type)
 
                         lock.connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(x) 
                         lock.is_enabled_pullspring, lock.duration_pullspring = self.parse_pull_spring_settings(x)

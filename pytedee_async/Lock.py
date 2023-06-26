@@ -22,12 +22,13 @@ class Lock(object):
     classdocs
     '''
 
-    def __init__(self, name, id):
+    def __init__(self, name, id, type):
         '''
         Constructor
         '''
         self._name = name
         self._id = id
+        self._type = type
         self._state = 0
         self._battery_level = None
         self._is_connected = False
@@ -40,6 +41,10 @@ class Lock(object):
     @property
     def id(self):
         return self._id
+    
+    @property
+    def type(self):
+        return self._type
     
     @property
     def is_state_locked(self):

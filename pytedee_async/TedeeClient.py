@@ -39,6 +39,11 @@ class TedeeClient(object):
         self = cls(personalToken, timeout)
         await self.get_devices()
         return self
+    
+    @property
+    def locks(self):
+        '''Return a list of locks'''
+        return self._sensor_list
 
     async def get_devices(self):
         '''Get the list of registered locks'''
@@ -68,10 +73,6 @@ class TedeeClient(object):
 
                     if self._lock_id == None:
                         raise TedeeClientException("No lock found")
-    
-    def get_locks(self):
-        '''Return a list of locks'''
-        return self._sensor_list
     
     # unlocking
     async def unlock(self, id):

@@ -6,16 +6,11 @@ Created on 01.11.2020
 import logging
 import aiohttp
 import asyncio
-from threading import Timer
 
 from .const import *
+from .Lock import Lock
+from .TedeeClientException import *
 
-try:
-    from .Lock import Lock
-    from .TedeeClientException import TedeeClientException
-except:
-    from Lock import Lock
-    from TedeeClientException import TedeeClientException
 
 _LOGGER = logging.getLogger(__name__)
     
@@ -74,6 +69,10 @@ class TedeeClient(object):
 
                     if self._lock_id == None:
                         raise TedeeClientException("No lock found")
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                else:
+                    raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
     
     # unlocking
     async def unlock(self, id):
@@ -91,6 +90,10 @@ class TedeeClient(object):
                     await asyncio.sleep(UNLOCK_DELAY)
                     lock.state = 2
                     await self.get_state()
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                else:
+                    raise TedeeClientException(f"Error during unlocking of lock {id}. Status code {response.status}")
             
     # locking
     async def lock(self, id):
@@ -109,6 +112,10 @@ class TedeeClient(object):
                     await asyncio.sleep(LOCK_DELAY)
                     lock.state = 6
                     await self.get_state()
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                else:
+                    raise TedeeClientException(f"Error during locking of lock {id}. Status code {response.status}")
 
     # pulling  
     async def open(self, id):
@@ -129,6 +136,10 @@ class TedeeClient(object):
 
                     await asyncio.sleep(lock.duration_pullspring + 1)
                     await self.get_state()
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                else: 
+                    raise TedeeClientException(f"Error during unlatching of lock {id}. Status code {response.status}")
 
     def is_unlocked(self, id):
         lock = self.find_lock(id)
@@ -160,6 +171,8 @@ class TedeeClient(object):
                     except KeyError:
                         _LOGGER.error("result: %s", result)
                         return False
+                elif response.status == 401:
+                    raise TedeeAuthException()
             
     async def get_state(self):
         async with aiohttp.ClientSession(
@@ -182,6 +195,10 @@ class TedeeClient(object):
                                     break
                     except KeyError:
                         _LOGGER.error("result: %s", r.json())
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                else:
+                    raise TedeeClientException(f"Error during getting state. Status code {response.status}")
 
     def parse_lock_properties(self, state: dict):
         if state["isConnected"]:

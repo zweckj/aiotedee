@@ -7,8 +7,10 @@ import time
 from pytedee_async.TedeeClient import TedeeClient
 from pytedee_async.Lock import Lock
 from pytedee_async.TedeeClientException import TedeeClientException
+from pytedee_async.helpers import *
 import asyncio
 import json
+
 
 async def main():
     with open("config.json") as f:
@@ -32,6 +34,7 @@ async def main():
         # await client.unlock(lock.id)
         # await asyncio.sleep(10)
         # await client.open(lock.id)
-        print(await client.update(lock.id))
+        # print(await client.update(lock.id))
+        print(await is_personal_key_valid(client._personalToken))
 
 asyncio.run(main())

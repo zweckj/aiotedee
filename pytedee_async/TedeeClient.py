@@ -71,6 +71,8 @@ class TedeeClient(object):
                             raise TedeeClientException("No lock found")
                     elif response.status == 401:
                         raise TedeeAuthException()
+                    elif response.status == 429:
+                        raise TedeeRateLimitException()
                     else:
                         raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
         except aiohttp.ClientConnectorError as ex:
@@ -95,6 +97,8 @@ class TedeeClient(object):
                         await self.get_state()
                     elif response.status == 401:
                         raise TedeeAuthException()
+                    elif response.status == 429:
+                        raise TedeeRateLimitException()
                     else:
                         raise TedeeClientException(f"Error during unlocking of lock {id}. Status code {response.status}")
         except aiohttp.ClientConnectorError as ex:
@@ -120,6 +124,8 @@ class TedeeClient(object):
                         await self.get_state()
                     elif response.status == 401:
                         raise TedeeAuthException()
+                    elif response.status == 429:
+                        raise TedeeRateLimitException()
                     else:
                         raise TedeeClientException(f"Error during locking of lock {id}. Status code {response.status}")
         except aiohttp.ClientConnectorError as ex:
@@ -147,6 +153,8 @@ class TedeeClient(object):
                         await self.get_state()
                     elif response.status == 401:
                         raise TedeeAuthException()
+                    elif response.status == 429:
+                        raise TedeeRateLimitException()
                     else: 
                         raise TedeeClientException(f"Error during unlatching of lock {id}. Status code {response.status}")
         except aiohttp.ClientConnectorError as ex:
@@ -185,6 +193,8 @@ class TedeeClient(object):
                             return False
                     elif response.status == 401:
                         raise TedeeAuthException()
+                    elif response.status == 429:
+                        raise TedeeRateLimitException()
         except aiohttp.ClientConnectorError as ex:
             raise TedeeConnectionException(ex)
             
@@ -212,6 +222,8 @@ class TedeeClient(object):
                             _LOGGER.error("result: %s", r.json())
                     elif response.status == 401:
                         raise TedeeAuthException()
+                    elif response.status == 429:
+                        raise TedeeRateLimitException()
                     else:
                         raise TedeeClientException(f"Error during getting state. Status code {response.status}")
         except aiohttp.ClientConnectorError as ex:

@@ -10,5 +10,8 @@ class TedeeClientException(BaseException):
 class TedeeAuthException(BaseException):
     pass
 
+class TedeeRateLimitException(BaseException):
+    pass
+
 class TedeeConnectionException(BaseException):
     pass

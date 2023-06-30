@@ -21,9 +21,8 @@ class TedeeClient(object):
         '''Constructor'''
         self._available = False
         self._personalToken = personalToken
-        self._sensor_list = []
+        self._locks_dict = {}
         self._timeout = timeout
-        self._lock_id = None
 
         '''Create the api header with new token'''
         self._api_header = {"Content-Type": "application/json", "Authorization": "PersonalKey " + self._personalToken}
@@ -32,202 +31,133 @@ class TedeeClient(object):
     @classmethod
     async def create(cls, personalToken, timeout=TIMEOUT):
         self = cls(personalToken, timeout)
-        await self.get_devices()
+        await self.get_locks()
         return self
     
     @property
     def locks(self):
         '''Return a list of locks'''
-        return self._sensor_list
+        return self._locks_dict.values()
 
-    async def get_devices(self):
+    @property
+    def locks_dict(self) -> dict:
+        return self._locks_dict
+
+
+    async def get_locks(self) -> None:
         '''Get the list of registered locks'''
-        try:
-            async with aiohttp.ClientSession(
-                    headers=self._api_header, 
-                    timeout=aiohttp.ClientTimeout(total=self._timeout)
-                ) as session:
-                async with session.get(API_URL_LOCK) as response:
-                    if response.status == 200:
-                        r = await response.json()
-                        _LOGGER.debug("Locks %s", r)
-                        result = r["result"]
+        async with aiohttp.ClientSession(
+                headers=self._api_header, 
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+            ) as session:
+            async with session.get(API_URL_LOCK) as response:
+                if response.status == 200:
+                    r = await response.json()
+                    _LOGGER.debug("Locks %s", r)
+                    result = r["result"]
 
-                        for x in result:            
-                            id = x["id"]
-                            name = x["name"]
-                            type = x["type"]
-                            lock = Lock(name, id, type)
+                    for lock_json in result:            
+                        lock_id = lock_json["id"]
+                        lock_name = lock_json["name"]
+                        lock_type = lock_json["type"]
+                        lock = Lock(lock_name, lock_id, lock_type)
 
-                            lock.connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(x) 
-                            lock.is_enabled_pullspring, lock.duration_pullspring = self.parse_pull_spring_settings(x)
-                            
-                            self._lock_id = id
-                            '''store the found lock in _sensor_list and get the battery_level'''
+                        lock.connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(lock_json) 
+                        lock.is_enabled_pullspring, lock.duration_pullspring = self.parse_pull_spring_settings(lock_json)
+                        
+                        
+                        self._locks_dict[lock_id] = lock
 
-                            self._sensor_list.append(lock)
-
-                        if self._lock_id == None:
-                            raise TedeeClientException("No lock found")
-                    elif response.status == 401:
-                        raise TedeeAuthException()
-                    elif response.status == 429:
-                        raise TedeeRateLimitException()
-                    else:
-                        raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
-        except aiohttp.ClientConnectorError as ex:
-            raise TedeeConnectionException(ex)
-    
+                    if lock_id == None:
+                        raise TedeeClientException("No lock found")
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                elif response.status == 429:
+                    raise TedeeRateLimitException()
+                else:
+                    raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
+                    
     # unlocking
-    async def unlock(self, id):
+    async def unlock(self, lock_id) -> None:
         '''Unlock method'''
-        lock = self.find_lock(id)
-        url = API_URL_LOCK + str(id) + API_PATH_UNLOCK
-        try:
-            async with aiohttp.ClientSession(
-                    headers=self._api_header, 
-                    timeout=aiohttp.ClientTimeout(total=self._timeout)
-                ) as session:
-                async with session.post(url) as response:
-                    if response.status == 202:
-                        lock.state = 4
-                        _LOGGER.debug("unlock command successful, id: %d ", id)
-                        await asyncio.sleep(UNLOCK_DELAY)
-                        lock.state = 2
-                        await self.get_state()
-                    elif response.status == 401:
-                        raise TedeeAuthException()
-                    elif response.status == 429:
-                        raise TedeeRateLimitException()
-                    else:
-                        raise TedeeClientException(f"Error during unlocking of lock {id}. Status code {response.status}")
-        except aiohttp.ClientConnectorError as ex:
-            raise TedeeConnectionException(ex)
+        url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK
+        
+        async with aiohttp.ClientSession(
+                headers=self._api_header, 
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+            ) as session:
+            async with session.post(url) as response:
+                if response.status == 202:
+                    self._locks_dict[lock_id].state = 4
+                    _LOGGER.debug("unlock command successful, id: %d ", lock_id)
+                    await asyncio.sleep(UNLOCK_DELAY)
+                    self._locks_dict[lock_id].state = 2
+
+                    await self.get_locks()
+
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                elif response.status == 429:
+                    raise TedeeRateLimitException()
+                else:
+                    raise TedeeClientException(f"Error during unlocking of lock {lock_id}. Status code {response.status}")
             
     # locking
-    async def lock(self, id):
+    async def lock(self, lock_id) -> None:
         ''''Lock method'''
-        lock = self.find_lock(id)
 
-        url = API_URL_LOCK + str(id) + API_PATH_LOCK
-        try:
-            async with aiohttp.ClientSession(
-                    headers=self._api_header, 
-                    timeout=aiohttp.ClientTimeout(total=self._timeout)
-                ) as session:
-                async with session.post(url) as response:
-                    if response.status == 202:
-                        lock.state = 5
-                        _LOGGER.debug("lock command successful, id: %d ", id)
-                        await asyncio.sleep(LOCK_DELAY)
-                        lock.state = 6
-                        await self.get_state()
-                    elif response.status == 401:
-                        raise TedeeAuthException()
-                    elif response.status == 429:
-                        raise TedeeRateLimitException()
-                    else:
-                        raise TedeeClientException(f"Error during locking of lock {id}. Status code {response.status}")
-        except aiohttp.ClientConnectorError as ex:
-            raise TedeeConnectionException(ex)
+        url = API_URL_LOCK + str(lock_id) + API_PATH_LOCK
+        async with aiohttp.ClientSession(
+                headers=self._api_header, 
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+            ) as session:
+            async with session.post(url) as response:
+                if response.status == 202:
+                    self._locks_dict[lock_id].state = 5
+                    _LOGGER.debug(f"lock command successful, id: {lock_id}")
+                    await asyncio.sleep(LOCK_DELAY)
+                    self._locks_dict[lock_id].state = 6
+                    await self.get_locks()
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                elif response.status == 429:
+                    raise TedeeRateLimitException()
+                else:
+                    raise TedeeClientException(f"Error during locking of lock {lock_id}. Status code {response.status}")
 
     # pulling  
-    async def open(self, id):
+    async def open(self, lock_id) -> None:
         '''Open the door latch'''
-        lock = self.find_lock(id)
 
-        url = API_URL_LOCK + str(id) + API_PATH_PULL
-        lock.state = 8
-        try:
-            async with aiohttp.ClientSession(
-                    headers=self._api_header, 
-                    timeout=aiohttp.ClientTimeout(total=self._timeout)
-                ) as session:
-                async with session.post(url) as response:
-                    
-                    if response.status == 202:
-                        lock.state = 7
-                        _LOGGER.debug("open command successful, id: %d ", id)
+        url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
+        self._locks_dict[lock_id].state = 8
+        
+        async with aiohttp.ClientSession(
+                headers=self._api_header, 
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+            ) as session:
+            async with session.post(url) as response:
+                
+                if response.status == 202:
+                    self._locks_dict[lock_id].state = 7
+                    _LOGGER.debug(f"open command successful, id: {lock_id}")
 
-                        await asyncio.sleep(lock.duration_pullspring + 1)
-                        await self.get_state()
-                    elif response.status == 401:
-                        raise TedeeAuthException()
-                    elif response.status == 429:
-                        raise TedeeRateLimitException()
-                    else: 
-                        raise TedeeClientException(f"Error during unlatching of lock {id}. Status code {response.status}")
-        except aiohttp.ClientConnectorError as ex:
-            raise TedeeConnectionException(ex)
+                    await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
+                    await self.get_locks()
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                elif response.status == 429:
+                    raise TedeeRateLimitException()
+                else: 
+                    raise TedeeClientException(f"Error during unlatching of lock {lock_id}. Status code {response.status}")
 
-    def is_unlocked(self, id):
-        lock = self.find_lock(id)
+    def is_unlocked(self, lock_id) -> bool:
+        lock = self._locks_dict[lock_id]
         return lock.state == 2
     
-    def is_locked(self, id):
-        lock = self.find_lock(id)
+    def is_locked(self, lock_id) -> bool:
+        lock = self._locks_dict[lock_id]
         return lock.state == 6
-    
-    async def get_battery(self, id):
-        lock = self.find_lock(id)
-        
-        url = API_URL_DEVICE + str(id) + API_PATH_BATTERY
-        try:
-            async with aiohttp.ClientSession(
-                    headers=self._api_header, 
-                    timeout=aiohttp.ClientTimeout(total=self._timeout)
-                ) as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        r = await response.json()
-                        _LOGGER.debug("result: %s", r)
-                        result = r["result"]
-                        try:
-                            for lock in self._sensor_list:
-                                if id == lock.id:
-                                    lock.battery_level = result["level"]
-                                    _LOGGER.debug("id: %d, battery level: %d", id, lock.battery_level)
-                            return True
-                        except KeyError:
-                            _LOGGER.error("result: %s", result)
-                            return False
-                    elif response.status == 401:
-                        raise TedeeAuthException()
-                    elif response.status == 429:
-                        raise TedeeRateLimitException()
-        except aiohttp.ClientConnectorError as ex:
-            raise TedeeConnectionException(ex)
-            
-    async def get_state(self):
-        try:
-            async with aiohttp.ClientSession(
-                    headers=self._api_header, 
-                    timeout=aiohttp.ClientTimeout(total=self._timeout)
-                ) as session:
-                async with session.get(API_URL_STATE) as response:
-                    if response.status == 200:
-                        r = await response.json()
-                        states = r["result"]
-                        try:
-                            for state in states:
-                                id = state["id"]
-                                # find the correct lock in the returned list of sensors
-                                for lock in self._sensor_list:
-                                    if id == lock.id:
-
-                                        lock.connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(state)
-                                        _LOGGER.debug("Id: %s, State: %d, battery: %d", lock.state, lock.is_charging, lock.battery_level)
-                                        break
-                        except KeyError:
-                            _LOGGER.error("result: %s", r.json())
-                    elif response.status == 401:
-                        raise TedeeAuthException()
-                    elif response.status == 429:
-                        raise TedeeRateLimitException()
-                    else:
-                        raise TedeeClientException(f"Error during getting state. Status code {response.status}")
-        except aiohttp.ClientConnectorError as ex:
-            raise TedeeConnectionException(ex)
 
     def parse_lock_properties(self, state: dict):
         if state["isConnected"]:
@@ -266,13 +196,17 @@ class TedeeClient(object):
             pullSpringDuration = 5
 
         return pullSpringEnabled, pullSpringDuration
-            
-    def find_lock(self, id):
-        for lock in self._sensor_list:
-            if id == lock.id:
-                return lock
-        raise TedeeClientException("This Id not found")
+    
 
-    async def update(self, id):
-        await self.get_state()
-        return await self.get_battery(id)
+    """ Legacy functions for backwards compability"""
+
+    async def update(self, lock_id) -> bool:
+        await self.get_locks()
+        return lock_id in self._locks_dict
+    
+    async def get_state(self):
+        await self.get_locks()
+
+    def find_lock(self, lock_id):
+        return self._locks_dict[lock_id]
+    

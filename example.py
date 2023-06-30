@@ -32,9 +32,9 @@ async def main():
         # await asyncio.sleep(7)
         #await client.unlock(lock.id)
         #await asyncio.sleep(10)
-        await client.unlock(lock.id)
-        await asyncio.sleep(5)
-        await client.open(lock.id)
+        # await client.unlock(lock.id)
+        # await asyncio.sleep(5)
+        # await client.open(lock.id)
         # print(await client.update(lock.id))
         #print(await is_personal_key_valid(client._personalToken))
 

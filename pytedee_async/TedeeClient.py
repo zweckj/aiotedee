@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 class TedeeClient(object):
     '''Classdocs'''
 
-    def __init__(self, personalToken, timeout):
+    def __init__(self, personalToken, timeout=TIMEOUT):
         '''Constructor'''
         self._available = False
         self._personalToken = personalToken

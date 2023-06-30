@@ -45,9 +45,9 @@ class Lock(object):
     @property
     def type(self):
         if self._type == 2:
-            return "Tedee Pro"
+            return "Tedee PRO"
         elif self._type == 4:
-            return "Tedee Go"
+            return "Tedee GO"
         else:
             return "Unknown Model"
     

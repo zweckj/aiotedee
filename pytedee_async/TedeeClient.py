@@ -77,10 +77,10 @@ class TedeeClient(object):
                 else:
                     raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
                     
-    # unlocking
+
     async def unlock(self, lock_id) -> None:
         '''Unlock method'''
-        url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK
+        url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=3"
         
         async with aiohttp.ClientSession(
                 headers=self._api_header, 
@@ -102,7 +102,7 @@ class TedeeClient(object):
                 else:
                     raise TedeeClientException(f"Error during unlocking of lock {lock_id}. Status code {response.status}")
             
-    # locking
+
     async def lock(self, lock_id) -> None:
         ''''Lock method'''
 
@@ -127,7 +127,33 @@ class TedeeClient(object):
 
     # pulling  
     async def open(self, lock_id) -> None:
-        '''Open the door latch'''
+        '''Unlock the door and pull the door latch'''
+
+        url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=4"
+        self._locks_dict[lock_id].state = 4
+        
+        async with aiohttp.ClientSession(
+                headers=self._api_header, 
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+            ) as session:
+            async with session.post(url) as response:
+                
+                if response.status == 202:
+                    self._locks_dict[lock_id].state = 2
+                    _LOGGER.debug(f"open command successful, id: {lock_id}")
+
+                    await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
+                    await self.get_locks()
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                elif response.status == 429:
+                    raise TedeeRateLimitException()
+                else: 
+                    raise TedeeClientException(f"Error during unlatching of lock {lock_id}. Status code {response.status}")
+                
+
+    async def pull(self, lock_id) -> None:
+        '''Only pull the door latch'''
 
         url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
         self._locks_dict[lock_id].state = 8

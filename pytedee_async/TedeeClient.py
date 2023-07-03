@@ -62,7 +62,7 @@ class TedeeClient(object):
                         lock_type = lock_json["type"]
                         lock = Lock(lock_name, lock_id, lock_type)
 
-                        lock.is_connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(lock_json) 
+                        lock.is_connected, lock.state, lock.battery_level, lock.is_charging, lock.state_change_result = self.parse_lock_properties(lock_json) 
                         lock.is_enabled_pullspring, lock.duration_pullspring = self.parse_pull_spring_settings(lock_json)
                         
                         
@@ -198,6 +198,11 @@ class TedeeClient(object):
         else:
             state = 9
 
+        if lock_properties["stateChangeResult"]:
+            state_change_result = lock_properties["stateChangeResult"]
+        else:
+            state_change_result = 0
+
         if lock_properties["batteryLevel"]:
             battery_level = lock_properties["batteryLevel"]
         else:
@@ -208,7 +213,7 @@ class TedeeClient(object):
         else:
             is_charging = False
 
-        return connected, state, battery_level, is_charging
+        return connected, state, battery_level, is_charging, state_change_result
     
     def parse_pull_spring_settings(self, settings: dict):
         if settings["deviceSettings"]["pullSpringEnabled"]:

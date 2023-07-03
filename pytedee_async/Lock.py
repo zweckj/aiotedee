@@ -33,6 +33,7 @@ class Lock(object):
         self._battery_level = None
         self._is_connected = False
         self._is_charging = False
+        self._state_change_result = 0
         
     @property
     def name(self):
@@ -59,6 +60,10 @@ class Lock(object):
     def is_state_unlocked(self):
         return self._state == 2
     
+    @property 
+    def is_state_jammed(self):
+        return self._state_change_result == 1
+    
     @property
     def state(self):
         return self._state
@@ -66,6 +71,14 @@ class Lock(object):
     @state.setter
     def state(self, status):
         self._state = status
+
+    @property
+    def state_change_result(self):
+        return self._state_change_result
+    
+    @state_change_result.setter
+    def state_change_result(self, result):
+        self._state_change_result = result
         
     @property
     def battery_level(self):

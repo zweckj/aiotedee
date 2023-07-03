@@ -62,7 +62,7 @@ class TedeeClient(object):
                         lock_type = lock_json["type"]
                         lock = Lock(lock_name, lock_id, lock_type)
 
-                        lock.connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(lock_json) 
+                        lock.is_connected, lock.state, lock.battery_level, lock.is_charging = self.parse_lock_properties(lock_json) 
                         lock.is_enabled_pullspring, lock.duration_pullspring = self.parse_pull_spring_settings(lock_json)
                         
                         

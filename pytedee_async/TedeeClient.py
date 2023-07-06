@@ -91,9 +91,7 @@ class TedeeClient(object):
                     self._locks_dict[lock_id].state = 4
                     _LOGGER.debug("unlock command successful, id: %d ", lock_id)
                     await asyncio.sleep(UNLOCK_DELAY)
-                    self._locks_dict[lock_id].state = 2
-
-                    await self.get_locks()
+                    self._locks_dict[lock_id].state = 2                   
 
                 elif response.status == 401:
                     raise TedeeAuthException()
@@ -117,7 +115,7 @@ class TedeeClient(object):
                     _LOGGER.debug(f"lock command successful, id: {lock_id}")
                     await asyncio.sleep(LOCK_DELAY)
                     self._locks_dict[lock_id].state = 6
-                    await self.get_locks()
+
                 elif response.status == 401:
                     raise TedeeAuthException()
                 elif response.status == 429:
@@ -143,7 +141,7 @@ class TedeeClient(object):
                     _LOGGER.debug(f"open command successful, id: {lock_id}")
 
                     await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
-                    await self.get_locks()
+
                 elif response.status == 401:
                     raise TedeeAuthException()
                 elif response.status == 429:
@@ -169,7 +167,7 @@ class TedeeClient(object):
                     _LOGGER.debug(f"open command successful, id: {lock_id}")
 
                     await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
-                    await self.get_locks()
+
                 elif response.status == 401:
                     raise TedeeAuthException()
                 elif response.status == 429:

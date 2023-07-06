@@ -76,6 +76,34 @@ class TedeeClient(object):
                     raise TedeeRateLimitException()
                 else:
                     raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
+                
+    async def sync(self) -> None:
+        '''Sync locks'''
+        _LOGGER.debug("Syncing locks...")
+        async with aiohttp.ClientSession(
+                headers=self._api_header, 
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+        ) as session:
+            async with session.get(API_URL_SYNC) as response:
+                if response.status == 200:
+                    r = await response.json()
+                    result = r["result"]
+
+                    for lock_json in result:            
+                        lock_id = lock_json["id"]
+
+                        lock = self.locks_dict[lock_id]
+
+                        lock.is_connected, lock.state, lock.battery_level, lock.is_charging, lock.state_change_result = self.parse_lock_properties(lock_json) 
+                        
+                        self._locks_dict[lock_id] = lock
+
+                elif response.status == 401:
+                    raise TedeeAuthException()
+                elif response.status == 429:
+                    raise TedeeRateLimitException()
+                else:
+                    raise TedeeClientException(f"Error during listing of devices. Status code {response.status}")
                     
 
     async def unlock(self, lock_id) -> None:

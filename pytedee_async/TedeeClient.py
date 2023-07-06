@@ -183,44 +183,44 @@ class TedeeClient(object):
         lock = self._locks_dict[lock_id]
         return lock.state == 6
 
-    def parse_lock_properties(self, state: dict):
-        if state["isConnected"]:
-            connected = state["isConnected"]
+    def parse_lock_properties(self, json: dict):
+        if "isConnected" in json:
+            connected = json["isConnected"]
         else:
             connected = False
 
-        lock_properties = state["lockProperties"]
-
-        if lock_properties["state"]:
-            state = lock_properties["state"]
+        if "lockProperties" in json:
+            lock_properties = json["lockProperties"]
         else:
-            state = 9
+            lock_properties = None
 
-        if lock_properties["stateChangeResult"]:
+        if lock_properties:
+            state = lock_properties["state"]
+            battery_level = lock_properties["batteryLevel"]
+            is_charging = lock_properties["isCharging"]
             state_change_result = lock_properties["stateChangeResult"]
         else:
-            state_change_result = 0
-
-        if lock_properties["batteryLevel"]:
-            battery_level = lock_properties["batteryLevel"]
-        else:
+            state = 9
             battery_level = 0
-
-        if lock_properties["isCharging"]:
-            is_charging = lock_properties["isCharging"]
-        else:
             is_charging = False
+            state_change_result = 0
 
         return connected, state, battery_level, is_charging, state_change_result
     
     def parse_pull_spring_settings(self, settings: dict):
-        if settings["deviceSettings"]["pullSpringEnabled"]:
-            pullSpringEnabled = settings["deviceSettings"]["pullSpringEnabled"]
+
+        if "deviceSettings" in settings:
+            deviceSettings = settings["deviceSettings"]
+        else:
+            deviceSettings = {}
+
+        if "pullSpringEnabled" in deviceSettings:
+            pullSpringEnabled = deviceSettings["pullSpringEnabled"]
         else:
             pullSpringEnabled = False
 
-        if settings["deviceSettings"]["pullSpringDuration"]:  
-            pullSpringDuration = settings["deviceSettings"]["pullSpringDuration"]
+        if "pullSpringDuration" in deviceSettings:  
+            pullSpringDuration = deviceSettings["pullSpringDuration"]
         else:
             pullSpringDuration = 5
 

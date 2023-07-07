@@ -59,11 +59,12 @@ class TedeeClient(object):
             lock.is_connected, lock.state, lock.battery_level, lock.is_charging, lock.state_change_result = self.parse_lock_properties(lock_json) 
             lock.is_enabled_pullspring, lock.duration_pullspring = self.parse_pull_spring_settings(lock_json)
             
-            
             self._locks_dict[lock_id] = lock
 
         if lock_id == None:
             raise TedeeClientException("No lock found")
+        
+        _LOGGER.debug("Locks retrieved successfully...")
 
 
     async def sync(self) -> None:
@@ -80,11 +81,13 @@ class TedeeClient(object):
             lock.is_connected, lock.state, lock.battery_level, lock.is_charging, lock.state_change_result = self.parse_lock_properties(lock_json) 
             
             self._locks_dict[lock_id] = lock
+        _LOGGER.debug("Locks synced successfully...")
 
 
 
     async def unlock(self, lock_id) -> None:
         '''Unlock method'''
+        _LOGGER.debug("Unlocking lock %s...", str(lock_id))
         url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=3"
         await http_request(url, "POST", self._api_header, self._timeout)
         _LOGGER.debug("unlock command successful, id: %d ", lock_id)
@@ -93,7 +96,7 @@ class TedeeClient(object):
 
     async def lock(self, lock_id) -> None:
         ''''Lock method'''
-
+        _LOGGER.debug("Locking lock %s...", str(lock_id))
         url = API_URL_LOCK + str(lock_id) + API_PATH_LOCK
         await http_request(url, "POST", self._api_header, self._timeout)
         _LOGGER.debug(f"lock command successful, id: {lock_id}")
@@ -103,7 +106,7 @@ class TedeeClient(object):
     # pulling  
     async def open(self, lock_id) -> None:
         '''Unlock the door and pull the door latch'''
-
+        _LOGGER.debug("Opening lock %s...", str(lock_id))
         url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=4"
         await http_request(url, "POST", self._api_header, self._timeout)
         _LOGGER.debug(f"open command successful, id: {lock_id}")
@@ -112,7 +115,7 @@ class TedeeClient(object):
 
     async def pull(self, lock_id) -> None:
         '''Only pull the door latch'''
-
+        _LOGGER.debug("Pulling latch for lock %s...", str(lock_id))
         url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
         await http_request(url, "POST", self._api_header, self._timeout)
         _LOGGER.debug(f"open command successful, id: {lock_id}")

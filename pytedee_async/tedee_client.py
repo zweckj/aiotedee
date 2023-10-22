@@ -1,44 +1,46 @@
 """The TedeeClient class."""
-import logging
+from __future__ import annotations
+
 import asyncio
 import hashlib
+import logging
 import time
+from typing import Any, ValuesView
 
 from .const import (
-    API_URL_LOCK,
-    API_PATH_UNLOCK,
-    API_PATH_LOCK,
-    API_PATH_PULL,
-    API_URL_SYNC,
     API_LOCAL_PORT,
     API_LOCAL_VERSION,
+    API_PATH_LOCK,
+    API_PATH_PULL,
+    API_PATH_UNLOCK,
+    API_URL_LOCK,
+    API_URL_SYNC,
+    LOCK_DELAY,
     TIMEOUT,
     UNLOCK_DELAY,
-    LOCK_DELAY,
 )
-
-from .helpers import http_request
-from .lock import TedeeLock
 from .exception import (
-    TedeeClientException,
     TedeeAuthException,
-    TedeeLocalAuthException,
+    TedeeClientException,
     TedeeDataUpdateException,
+    TedeeLocalAuthException,
+    TedeeRateLimitException,
     TedeeWebhookException,
 )
-
+from .helpers import http_request
+from .lock import TedeeLock, TedeeLockState
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class TedeeClient(object):
-    """Classdocs"""
+class TedeeClient:
+    """Client for interacting with the Tedee API."""
 
     def __init__(
         self,
-        personal_token: str = None,
-        local_token: str = None,
-        local_ip: str = None,
+        personal_token: str | None = None,
+        local_token: str | None = None,
+        local_ip: str | None = None,
         timeout: int = TIMEOUT,
     ):
         """Constructor"""
@@ -48,37 +50,39 @@ class TedeeClient(object):
         self._local_token = local_token
         self._local_ip = local_ip
         self._timeout = timeout
-        self._use_local_api = local_token is not None and local_ip is not None
+        self._use_local_api: bool = local_token is not None and local_ip is not None
 
         _LOGGER.debug("Using local API: %s", str(self._use_local_api))
 
         # Create the api header with new token"
-        self._api_header = {
+        self._api_header: dict[str, str] = {
             "Content-Type": "application/json",
             "Authorization": "PersonalKey " + str(self._personal_token),
         }
-        self._local_api_path = f"http://{local_ip}:{API_LOCAL_PORT}/{API_LOCAL_VERSION}"
+        self._local_api_path: str = (
+            f"http://{local_ip}:{API_LOCAL_PORT}/{API_LOCAL_VERSION}"
+        )
 
     @classmethod
     async def create(
         cls,
-        personal_token: str = None,
-        local_token: str = None,
-        local_ip: str = None,
+        personal_token: str | None = None,
+        local_token: str | None = None,
+        local_ip: str | None = None,
         timeout=TIMEOUT,
-    ):
+    ) -> TedeeClient:
         """Create a new instance of the TedeeClient, which is initialized."""
         self = cls(personal_token, local_token, local_ip, timeout)
         await self.get_locks()
         return self
 
     @property
-    def locks(self):
+    def locks(self) -> ValuesView:
         """Return a list of locks"""
         return self._locks_dict.values()
 
     @property
-    def locks_dict(self) -> dict:
+    def locks_dict(self) -> dict[int, TedeeLock]:
         """Return all locks."""
         return self._locks_dict
 
@@ -89,6 +93,9 @@ class TedeeClient(object):
             r = await http_request(API_URL_LOCK, "GET", self._api_header, self._timeout)
             result = r["result"]
         _LOGGER.debug("Locks %s", result)
+
+        if result is None:
+            raise TedeeClientException('No data returned in "result" from get_locks')
 
         for lock_json in result:
             lock_id = lock_json["id"]
@@ -129,11 +136,14 @@ class TedeeClient(object):
 
     async def sync(self) -> None:
         """Sync locks"""
-        _LOGGER.debug("Syncing locks...")
+        _LOGGER.debug("Syncing locks")
         local_call_success, result = await self._local_api_call("/lock", "GET")
         if not local_call_success:
             r = await http_request(API_URL_SYNC, "GET", self._api_header, self._timeout)
             result = r["result"]
+
+        if result is None:
+            raise TedeeClientException('No data returned in "result" from sync')
 
         for lock_json in result:
             lock_id = lock_json["id"]
@@ -155,7 +165,7 @@ class TedeeClient(object):
                 ) = self.parse_pull_spring_settings(lock_json)
 
             self._locks_dict[lock_id] = lock
-        _LOGGER.debug("Locks synced successfully...")
+        _LOGGER.debug("Locks synced successfully")
 
     async def unlock(self, lock_id: int) -> None:
         """Unlock method"""
@@ -209,12 +219,12 @@ class TedeeClient(object):
     def is_unlocked(self, lock_id: int) -> bool:
         """Return is a specific lock is unlocked"""
         lock = self._locks_dict[lock_id]
-        return lock.state == 2
+        return lock.state == TedeeLockState.UNLOCKED
 
     def is_locked(self, lock_id: int) -> bool:
         """Return is a specific lock is locked"""
         lock = self._locks_dict[lock_id]
-        return lock.state == 6
+        return lock.state == TedeeLockState.LOCKED
 
     def parse_lock_properties(self, json_properties: dict):
         """Parse the lock properties"""
@@ -239,24 +249,28 @@ class TedeeClient(object):
     def parse_pull_spring_settings(self, settings: dict):
         """Parse the pull spring settings"""
         device_settings = settings.get("deviceSettings", {})
-        pull_spring_enabled = device_settings.get("pullSpringEnabled", False)
+        pull_spring_enabled = bool(device_settings.get("pullSpringEnabled", False))
         pull_spring_duration = device_settings.get("pullSpringDuration", 5)
         return pull_spring_enabled, pull_spring_duration
 
     def _calculate_secure_local_token(self) -> str:
         """Calculate the secure token"""
+        assert self._local_token
         ms = time.time_ns() // 1_000_000
         secure_token = self._local_token + str(ms)
         secure_token = hashlib.sha256(secure_token.encode("utf-8")).hexdigest()
         secure_token += str(ms)
         return secure_token
 
-    def _get_local_api_header(self, secure: bool = True) -> str:
+    def _get_local_api_header(self, secure: bool = True) -> dict[str, str]:
         """Get the local api header"""
+        assert self._local_token
         token = self._calculate_secure_local_token() if secure else self._local_token
         return {"Content-Type": "application/json", "api_token": token}
 
-    async def _local_api_call(self, path: str, http_method: str, json_data=None):
+    async def _local_api_call(
+        self, path: str, http_method: str, json_data=None
+    ) -> tuple[bool, Any | None]:
         """Call the local api"""
         if self._use_local_api:
             try:
@@ -273,27 +287,27 @@ class TedeeClient(object):
                 msg = "Local API authentication failed."
                 if not self._personal_token:
                     raise TedeeLocalAuthException(msg) from ex
-                else:
-                    _LOGGER.debug(msg)
-            except Exception as ex:
+
+                _LOGGER.debug(msg)
+            except (TedeeClientException, TedeeRateLimitException) as ex:
                 if not self._personal_token:
                     _LOGGER.debug(
                         "Error while calling local API endpoint %s. Error: %s. Full error: %s",
                         path,
                         {type(ex).__name__},
                         str(ex),
-                        exc_info=1,
+                        exc_info=True,
                     )
                     raise TedeeDataUpdateException(
                         f"Error while calling local API endpoint {path}."
                     ) from ex
-                else:
-                    _LOGGER.debug(
-                        "Error while calling local API endpoint %s, retrying with cloud call. Error: %s",
-                        path,
-                        type(ex).__name__,
-                    )
-                _LOGGER.debug("Full error: %s", str(ex), exc_info=1)
+
+                _LOGGER.debug(
+                    "Error while calling local API endpoint %s, retrying with cloud call. Error: %s",
+                    path,
+                    type(ex).__name__,
+                )
+                _LOGGER.debug("Full error: %s", str(ex), exc_info=True)
         return False, None
 
     def parse_webhook_message(self, message: dict) -> None:
@@ -333,12 +347,14 @@ class TedeeClient(object):
 
         self._locks_dict[lock_id] = lock
 
-    async def register_webhook(self, webhook_url: str, headers: list = None) -> None:
+    async def register_webhook(
+        self, webhook_url: str, headers_bridge_sends: list | None = None
+    ) -> None:
         """Register the webhook"""
-        if headers is None:
-            headers = []
+        if headers_bridge_sends is None:
+            headers_bridge_sends = []
         _LOGGER.debug("Registering webhook %s", webhook_url)
-        data = [{"url": webhook_url, "headers": headers}]
+        data = [{"url": webhook_url, "headers": headers_bridge_sends}]
         await self._local_api_call("/callback", "PUT", data)
         _LOGGER.debug("Webhook registered successfully.")
 

@@ -1,5 +1,19 @@
 """Tedee Lock Object."""
 
+from enum import IntEnum
+
+
+class TedeeLockState(IntEnum):
+    """Tedee Lock State."""
+
+    UNKNOWN = 0
+    UNLOCKED = 2
+    HALF_OPEN = 3
+    UNLOCKING = 4
+    LOCKING = 5
+    LOCKED = 6
+    PULLED = 7
+
 
 class TedeeLock:
     """Tedee Lock."""
@@ -10,13 +24,13 @@ class TedeeLock:
         lock_id: int,
         lock_type: int,
         state: int = 0,
-        battery_level: int = None,
+        battery_level: int | None = None,
         is_connected: bool = False,
         is_charging: bool = False,
         state_change_result: int = 0,
         is_enabled_pullspring: bool = False,
         duration_pullspring: int = 0,
-    ):
+    ) -> None:
         """Initialize a new lock."""
         self._lock_name = lock_name
         self._lock_id = lock_id
@@ -31,14 +45,17 @@ class TedeeLock:
 
     @property
     def lock_name(self) -> str:
+        """Return the name of the lock."""
         return self._lock_name
 
     @property
     def lock_id(self) -> int:
+        """Return the id of the lock."""
         return self._lock_id
 
     @property
     def lock_type(self) -> str:
+        """Return the type of the lock."""
         if self._lock_type == 2:
             return "Tedee PRO"
         elif self._lock_type == 4:
@@ -48,41 +65,40 @@ class TedeeLock:
 
     @property
     def is_state_locked(self) -> bool:
-        return self._state == 6
+        """Return true if the lock is locked."""
+        return self._state == TedeeLockState.LOCKED
 
     @property
     def is_state_unlocked(self) -> bool:
-        return self._state == 2
+        """Return true if the lock is unlocked."""
+        return self._state == TedeeLockState.UNLOCKED
 
     @property
     def is_state_jammed(self) -> bool:
+        """Return true if the lock is jammed."""
         return self._state_change_result == 1
 
     @property
-    def state(self) -> int:
-        # Unknown = 0
-        # Unlocked = 2
-        # Half Open = 3
-        # Unlocking = 4
-        # Locking = 5
-        # Locked = 6
-        # Pull = 7
-        return self._state
+    def state(self) -> TedeeLockState:
+        """Return the state of the lock."""
+        return TedeeLockState(self._state)
 
     @state.setter
-    def state(self, status):
+    def state(self, status: int):
         self._state = status
 
     @property
     def state_change_result(self) -> int:
+        """Return the state change result of the lock."""
         return self._state_change_result
 
     @state_change_result.setter
-    def state_change_result(self, result):
+    def state_change_result(self, result: int):
         self._state_change_result = result
 
     @property
-    def battery_level(self) -> int:
+    def battery_level(self) -> int | None:
+        """Return the battery level of the lock."""
         return self._battery_level
 
     @battery_level.setter
@@ -91,6 +107,7 @@ class TedeeLock:
 
     @property
     def is_connected(self) -> bool:
+        """Return true if the lock is connected."""
         return self._is_connected
 
     @is_connected.setter
@@ -99,29 +116,33 @@ class TedeeLock:
 
     @property
     def is_charging(self) -> bool:
+        """Return true if the lock is charging."""
         return self._is_charging
 
     @is_charging.setter
-    def is_charging(self, value):
+    def is_charging(self, value: bool):
         self._is_charging = value
 
     @property
     def is_enabled_pullspring(self) -> bool:
-        return self._is_enabled_pullspring
+        """Return true if the lock is charging."""
+        return bool(self._is_enabled_pullspring)
 
     @is_enabled_pullspring.setter
-    def is_enabled_pullspring(self, value):
+    def is_enabled_pullspring(self, value: bool):
         self._is_enabled_pullspring = value
 
     @property
     def duration_pullspring(self) -> int:
+        """Return the duration of the pullspring."""
         return self._duration_pullspring
 
     @duration_pullspring.setter
-    def duration_pullspring(self, duration):
+    def duration_pullspring(self, duration: int):
         self._duration_pullspring = duration
 
     def to_dict(self):
+        """Return a dict representation of the lock."""
         return {
             "lock_name": self._lock_name,
             "lock_id": self._lock_id,

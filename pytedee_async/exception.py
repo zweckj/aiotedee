@@ -1,23 +1,25 @@
+"""Exceptions for pytedee_async."""
+
+
 class TedeeClientException(Exception):
-    def __init__(self, msg):
-        super().__init__(msg)
-        
+    """General Tedee client exception."""
+
+
 class TedeeAuthException(Exception):
-    def __init__(self, msg):
-        super().__init__(msg)
+    """Authentication exception against remote API."""
+
 
 class TedeeLocalAuthException(Exception):
-    def __init__(self, msg):
-        super().__init__(msg)
+    """Authentication exception against local API."""
+
 
 class TedeeRateLimitException(Exception):
-    def __init__(self, msg):
-        super().__init__(msg)
+    """Rate limit exception (only happens on cloud API)."""
+
 
 class TedeeWebhookException(Exception):
-    def __init__(self, msg):
-        super().__init__(msg)
+    """Webhook exception."""
+
 
 class TedeeDataUpdateException(Exception):
-    def __init__(self, msg):
-        super().__init__(msg)
+    """Data update exception."""

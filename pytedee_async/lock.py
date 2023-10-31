@@ -141,7 +141,7 @@ class TedeeLock:
     def duration_pullspring(self, duration: int):
         self._duration_pullspring = duration
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, str | int | bool | None]:
         """Return a dict representation of the lock."""
         return {
             "lock_name": self._lock_name,

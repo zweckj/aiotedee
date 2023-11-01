@@ -184,6 +184,17 @@ class TedeeClient:
             self._locks_dict[lock_id] = lock
         _LOGGER.debug("Locks synced successfully")
 
+    async def get_local_bridge(self) -> TedeeBridge:
+        """Get the local bridge"""
+        if not self._use_local_api:
+            raise TedeeClientException("Local API not configured.")
+        local_call_success, result = await self._local_api_call("/bridge", "GET")
+        if not local_call_success:
+            raise TedeeClientException("Unable to get local bridge")
+        bridge_serial = result["serialNumber"]
+        bridge_name = result["name"]
+        return TedeeBridge(0, bridge_serial, bridge_name)
+
     async def get_bridges(self) -> list[TedeeBridge]:
         """List all bridges."""
         _LOGGER.debug("Getting bridges...")

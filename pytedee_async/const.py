@@ -1,8 +1,9 @@
 """Constants for pytedee_async."""
-API_URL_BASE = "https://api.tedee.com/api/v1.30/"
+API_URL_BASE = "https://api.tedee.com/api/v1.32/"
 API_URL_DEVICE = API_URL_BASE + "my/device/"
 API_URL_LOCK = API_URL_BASE + "my/lock/"
 API_URL_SYNC = API_URL_LOCK + "sync"
+API_URL_BRIDGE = API_URL_BASE + "my/bridge/"
 
 API_PATH_UNLOCK = "/operation/unlock"
 API_PATH_LOCK = "/operation/lock"

@@ -7,12 +7,14 @@ import logging
 import time
 from typing import Any, ValuesView
 
+from .bridge import TedeeBridge
 from .const import (
     API_LOCAL_PORT,
     API_LOCAL_VERSION,
     API_PATH_LOCK,
     API_PATH_PULL,
     API_PATH_UNLOCK,
+    API_URL_BRIDGE,
     API_URL_LOCK,
     API_URL_SYNC,
     LOCK_DELAY,
@@ -42,6 +44,7 @@ class TedeeClient:
         local_token: str | None = None,
         local_ip: str | None = None,
         timeout: int = TIMEOUT,
+        bridge_id: int | None = None,
     ):
         """Constructor"""
         self._available = False
@@ -50,6 +53,7 @@ class TedeeClient:
         self._local_token = local_token
         self._local_ip = local_ip
         self._timeout = timeout
+        self._bridge_id = bridge_id
         self._use_local_api: bool = local_token is not None and local_ip is not None
 
         _LOGGER.debug("Using local API: %s", str(self._use_local_api))
@@ -69,10 +73,11 @@ class TedeeClient:
         personal_token: str | None = None,
         local_token: str | None = None,
         local_ip: str | None = None,
+        bridge_id: int | None = None,
         timeout=TIMEOUT,
     ) -> TedeeClient:
         """Create a new instance of the TedeeClient, which is initialized."""
-        self = cls(personal_token, local_token, local_ip, timeout)
+        self = cls(personal_token, local_token, local_ip, timeout, bridge_id)
         await self.get_locks()
         return self
 
@@ -98,6 +103,12 @@ class TedeeClient:
             raise TedeeClientException('No data returned in "result" from get_locks')
 
         for lock_json in result:
+            if self._bridge_id:
+                # if bridge id is set, only get locks for that bridge
+                connected_to_id: int | None = lock_json.get("connectedToId")
+                if connected_to_id is not None and connected_to_id != self._bridge_id:
+                    continue
+
             lock_id = lock_json["id"]
             lock_name = lock_json["name"]
             lock_type = lock_json["type"]
@@ -146,6 +157,12 @@ class TedeeClient:
             raise TedeeClientException('No data returned in "result" from sync')
 
         for lock_json in result:
+            if self._bridge_id:
+                # if bridge id is set, only get locks for that bridge
+                connected_to_id: int | None = lock_json.get("connectedToId")
+                if connected_to_id is not None and connected_to_id != self._bridge_id:
+                    continue
+
             lock_id = lock_json["id"]
 
             lock = self.locks_dict[lock_id]
@@ -166,6 +183,25 @@ class TedeeClient:
 
             self._locks_dict[lock_id] = lock
         _LOGGER.debug("Locks synced successfully")
+
+    async def get_bridges(self) -> list[TedeeBridge]:
+        """List all bridges."""
+        _LOGGER.debug("Getting bridges...")
+        r = await http_request(API_URL_BRIDGE, "GET", self._api_header, self._timeout)
+        result = r["result"]
+        bridges = []
+        for bridge_json in result:
+            bridge_id = bridge_json["id"]
+            bridge_serial = bridge_json["serialNumber"]
+            bridge_name = bridge_json["name"]
+            bridge = TedeeBridge(
+                bridge_id,
+                bridge_serial,
+                bridge_name,
+            )
+            bridges.append(bridge)
+        _LOGGER.debug("Bridges retrieved successfully...")
+        return bridges
 
     async def unlock(self, lock_id: int) -> None:
         """Unlock method"""

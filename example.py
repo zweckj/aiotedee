@@ -14,6 +14,10 @@ async def main():
     local_token = data["localToken"]
 
     client = await TedeeClient.create(personal_token, local_token, ip)
+    bridges = await client.get_bridges()
+    client = await TedeeClient.create(
+        personal_token, local_token, ip, bridge_id=bridges[0].bridge_id
+    )
     locks = client.locks
 
     locks_list = [lock.to_dict() for _, lock in client.locks_dict.items()]

@@ -360,7 +360,7 @@ class TedeeClient:
     def parse_webhook_message(self, message: dict) -> None:
         """Parse the webhook message sent from the bridge"""
 
-        message_type = message.get("type")
+        message_type = message.get("event")
         data = message.get("data")
 
         if data is None:

@@ -189,7 +189,7 @@ class TedeeClient:
         if not self._use_local_api:
             raise TedeeClientException("Local API not configured.")
         local_call_success, result = await self._local_api_call("/bridge", "GET")
-        if not local_call_success:
+        if not local_call_success or not result:
             raise TedeeClientException("Unable to get local bridge")
         bridge_serial = result["serialNumber"]
         bridge_name = result["name"]
@@ -302,7 +302,8 @@ class TedeeClient:
 
     def _calculate_secure_local_token(self) -> str:
         """Calculate the secure token"""
-        assert self._local_token
+        if not self._local_token:
+            return ""
         ms = time.time_ns() // 1_000_000
         secure_token = self._local_token + str(ms)
         secure_token = hashlib.sha256(secure_token.encode("utf-8")).hexdigest()
@@ -311,7 +312,8 @@ class TedeeClient:
 
     def _get_local_api_header(self, secure: bool = True) -> dict[str, str]:
         """Get the local api header"""
-        assert self._local_token
+        if not self._local_token:
+            return {}
         token = self._calculate_secure_local_token() if secure else self._local_token
         return {"Content-Type": "application/json", "api_token": token}
 

@@ -54,7 +54,7 @@ class TedeeClient:
         self._local_ip = local_ip
         self._timeout = timeout
         self._bridge_id = bridge_id
-        self._use_local_api: bool = local_token is not None and local_ip is not None
+        self._use_local_api: bool = bool(local_token and local_ip)
 
         _LOGGER.debug("Using local API: %s", str(self._use_local_api))
 

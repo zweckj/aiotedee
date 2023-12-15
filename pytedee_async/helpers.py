@@ -1,7 +1,7 @@
 """Helper functions for pytedee_async."""
 from typing import Any, Mapping
 
-import aiohttp
+import httpx
 
 from .const import API_URL_DEVICE, TIMEOUT
 from .exception import TedeeAuthException, TedeeClientException, TedeeRateLimitException
@@ -10,18 +10,18 @@ from .exception import TedeeAuthException, TedeeClientException, TedeeRateLimitE
 async def is_personal_key_valid(personal_key: str, timeout: int = TIMEOUT) -> bool:
     """Check if personal key is valid."""
     try:
-        async with aiohttp.ClientSession(
+        async with httpx.AsyncClient(
             headers={
                 "Content-Type": "application/json",
                 "Authorization": "PersonalKey " + personal_key,
             },
-            timeout=aiohttp.ClientTimeout(total=timeout),
-        ) as session:
-            async with session.get(API_URL_DEVICE) as response:
-                if response.status == 200:
-                    return True
-                return False
-    except aiohttp.ClientError:
+            timeout=timeout,
+        ) as client:
+            response = await client.get(API_URL_DEVICE)
+            if response.is_success:
+                return True
+            return False
+    except (httpx.HTTPError, TimeoutError):
         return False
 
 
@@ -33,34 +33,32 @@ async def http_request(
     json_data: Any = None,
 ) -> Any:
     """HTTP request wrapper."""
-    async with aiohttp.ClientSession(
-        headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
-    ) as session:
+    async with httpx.AsyncClient(headers=headers, timeout=timeout) as client:
         if http_method == "GET":
-            async with session.get(url) as response:
-                return await handle_response(response)
+            response = await client.get(url)
+            return await handle_response(response)
         if http_method == "POST":
-            async with session.post(url, json=json_data) as response:
-                return await handle_response(response)
+            response = await client.post(url, json=json_data)
+            return await handle_response(response)
         if http_method == "PUT":
-            async with session.put(url, json=json_data) as response:
-                return await handle_response(response)
+            response = await client.put(url, json=json_data)
+            return await handle_response(response)
         if http_method == "DELETE":
-            async with session.delete(url) as response:
-                return await handle_response(response)
+            response = await client.delete(url)
+            return await handle_response(response)
         raise ValueError(f"Unsupported HTTP method: {http_method}")
 
 
-async def handle_response(response) -> Any:
+async def handle_response(response: httpx.Response) -> Any:
     """Handle HTTP response."""
-    status_code = response.status
-    if status_code in (200, 202, 204):
+    if response.is_success:
         return await response.json()
-    if response.status == 401:
+
+    if response.status_code == 401:
         raise TedeeAuthException("Authentication failed.")
-    if response.status == 429:
+    if response.status_code == 429:
         raise TedeeRateLimitException("Tedee API Rate Limit.")
 
     raise TedeeClientException(
-        f"Error during HTTP request. Status code {response.status}"
+        f"Error during HTTP request. Status code {response.status_code}"
     )

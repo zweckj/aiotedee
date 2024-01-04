@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pytedee_async",
-    version="0.2.5",
+    version="0.2.6",
     author="Josef Zweck",
     author_email="24647999+zweckj@users.noreply.github.com",
     description="A Tedee Lock Client package",
@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/zweckj/pytedee_async",
     packages=setuptools.find_packages(),
-    install_requires=["httpx"],
+    install_requires=["aiohttp"],
     license="MIT",
     classifiers=[
         "Development Status :: 3 - Alpha",

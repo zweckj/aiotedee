@@ -7,6 +7,8 @@ import logging
 import time
 from typing import Any, ValuesView
 
+import aiohttp
+
 from .bridge import TedeeBridge
 from .const import (
     API_LOCAL_PORT,
@@ -45,6 +47,7 @@ class TedeeClient:
         local_ip: str | None = None,
         timeout: int = TIMEOUT,
         bridge_id: int | None = None,
+        session: aiohttp.ClientSession | None = None,
     ):
         """Constructor"""
         self._available = False
@@ -54,7 +57,13 @@ class TedeeClient:
         self._local_ip = local_ip
         self._timeout = timeout
         self._bridge_id = bridge_id
+
         self._use_local_api: bool = bool(local_token and local_ip)
+
+        if session is None:
+            self._session = aiohttp.ClientSession()
+        else:
+            self._session = session
 
         _LOGGER.debug("Using local API: %s", str(self._use_local_api))
 
@@ -95,7 +104,13 @@ class TedeeClient:
         """Get the list of registered locks"""
         local_call_success, result = await self._local_api_call("/lock", "GET")
         if not local_call_success:
-            r = await http_request(API_URL_LOCK, "GET", self._api_header, self._timeout)
+            r = await http_request(
+                API_URL_LOCK,
+                "GET",
+                self._api_header,
+                self._timeout,
+                session=self._session,
+            )
             result = r["result"]
         _LOGGER.debug("Locks %s", result)
 
@@ -150,7 +165,13 @@ class TedeeClient:
         _LOGGER.debug("Syncing locks")
         local_call_success, result = await self._local_api_call("/lock", "GET")
         if not local_call_success:
-            r = await http_request(API_URL_SYNC, "GET", self._api_header, self._timeout)
+            r = await http_request(
+                API_URL_SYNC,
+                "GET",
+                self._api_header,
+                self._timeout,
+                session=self._session,
+            )
             result = r["result"]
 
         if result is None:
@@ -198,7 +219,13 @@ class TedeeClient:
     async def get_bridges(self) -> list[TedeeBridge]:
         """List all bridges."""
         _LOGGER.debug("Getting bridges...")
-        r = await http_request(API_URL_BRIDGE, "GET", self._api_header, self._timeout)
+        r = await http_request(
+            API_URL_BRIDGE,
+            "GET",
+            self._api_header,
+            self._timeout,
+            session=self._session,
+        )
         result = r["result"]
         bridges = []
         for bridge_json in result:
@@ -222,7 +249,9 @@ class TedeeClient:
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=3"
-            await http_request(url, "POST", self._api_header, self._timeout)
+            await http_request(
+                url, "POST", self._api_header, self._timeout, session=self._session
+            )
         _LOGGER.debug("unlock command successful, id: %d ", lock_id)
         await asyncio.sleep(UNLOCK_DELAY)
 
@@ -247,7 +276,9 @@ class TedeeClient:
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=4"
-            await http_request(url, "POST", self._api_header, self._timeout)
+            await http_request(
+                url, "POST", self._api_header, self._timeout, session=self._session
+            )
         _LOGGER.debug("Open command successful, id: %s", lock_id)
         await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
 
@@ -259,7 +290,9 @@ class TedeeClient:
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
-            await http_request(url, "POST", self._api_header, self._timeout)
+            await http_request(
+                url, "POST", self._api_header, self._timeout, session=self._session
+            )
         _LOGGER.debug("Open command not successful, id: %s", lock_id)
         await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
 
@@ -330,6 +363,7 @@ class TedeeClient:
                     self._get_local_api_header(),
                     self._timeout,
                     json_data,
+                    session=self._session,
                 )
                 return True, r
             except TedeeAuthException as ex:

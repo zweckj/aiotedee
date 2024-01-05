@@ -16,6 +16,9 @@ async def main():
     # client = await TedeeClient.create(personal_token, local_token, ip)
     client = TedeeClient(local_ip=ip, local_token=local_token)
     bridge = await client.get_local_bridge()
+    await client.get_locks()
+    await client.sync()
+    await client.sync()
     bridges = await client.get_bridges()
     client = await TedeeClient.create(
         personal_token, local_token, ip, bridge_id=bridges[0].bridge_id

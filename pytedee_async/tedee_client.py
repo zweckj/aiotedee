@@ -19,6 +19,7 @@ from .const import (
     API_URL_BRIDGE,
     API_URL_LOCK,
     API_URL_SYNC,
+    LOCAL_CALL_MIN_DISTANCE,
     LOCK_DELAY,
     TIMEOUT,
     UNLOCK_DELAY,
@@ -59,6 +60,7 @@ class TedeeClient:
         self._bridge_id = bridge_id
 
         self._use_local_api: bool = bool(local_token and local_ip)
+        self._last_local_call: float | None = None
 
         if session is None:
             self._session = aiohttp.ClientSession()
@@ -373,8 +375,14 @@ class TedeeClient:
     ) -> tuple[bool, Any | None]:
         """Call the local api"""
         if self._use_local_api:
+            if (
+                self._last_local_call
+                and time.time() - self._last_local_call < LOCAL_CALL_MIN_DISTANCE
+            ):
+                await asyncio.sleep(LOCAL_CALL_MIN_DISTANCE)
             try:
                 _LOGGER.debug("Getting locks from Local API...")
+                self._last_local_call = time.time()
                 r = await http_request(
                     self._local_api_path + path,
                     http_method,

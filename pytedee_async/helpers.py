@@ -5,6 +5,7 @@ import aiohttp
 
 from .const import API_URL_DEVICE, TIMEOUT
 from .exception import TedeeAuthException, TedeeClientException, TedeeRateLimitException
+from http import HTTPStatus
 
 
 async def is_personal_key_valid(
@@ -15,19 +16,24 @@ async def is_personal_key_valid(
     """Check if personal key is valid."""
 
     try:
-        async with session.get(
+        response = await session.get(
             API_URL_DEVICE,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": "PersonalKey " + personal_key,
             },
             timeout=timeout,
-        ) as response:
-            if response.status in (200, 201, 204):
-                return True
-            return False
+        )
     except (aiohttp.ClientError, aiohttp.ServerConnectionError, TimeoutError):
         return False
+
+    if response.status in (
+        HTTPStatus.OK,
+        HTTPStatus.CREATED,
+        HTTPStatus.ACCEPTED,
+    ):
+        return True
+    return False
 
 
 async def http_request(
@@ -65,11 +71,15 @@ async def http_request(
         raise TedeeClientException(f"Error during http call: {exc}") from exc
 
     status_code = response.status
-    if status_code in (200, 201, 204):
+    if response.status in (
+        HTTPStatus.OK,
+        HTTPStatus.CREATED,
+        HTTPStatus.ACCEPTED,
+    ):
         return await response.json()
-    if status_code == 401:
+    if status_code == HTTPStatus.UNAUTHORIZED:
         raise TedeeAuthException("Authentication failed.")
-    if status_code == 429:
+    if status_code == HTTPStatus.TOO_MANY_REQUESTS:
         raise TedeeRateLimitException("Tedee API Rate Limit.")
 
     raise TedeeClientException(f"Error during HTTP request. Status code {status_code}")

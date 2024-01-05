@@ -108,8 +108,8 @@ class TedeeClient:
                 API_URL_LOCK,
                 "GET",
                 self._api_header,
+                self._session,
                 self._timeout,
-                session=self._session,
             )
             result = r["result"]
         _LOGGER.debug("Locks %s", result)
@@ -169,8 +169,8 @@ class TedeeClient:
                 API_URL_SYNC,
                 "GET",
                 self._api_header,
+                self._session,
                 self._timeout,
-                session=self._session,
             )
             result = r["result"]
 
@@ -223,8 +223,8 @@ class TedeeClient:
             API_URL_BRIDGE,
             "GET",
             self._api_header,
+            self._session,
             self._timeout,
-            session=self._session,
         )
         result = r["result"]
         bridges = []
@@ -250,7 +250,11 @@ class TedeeClient:
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=3"
             await http_request(
-                url, "POST", self._api_header, self._timeout, session=self._session
+                url,
+                "POST",
+                self._api_header,
+                self._session,
+                self._timeout,
             )
         _LOGGER.debug("unlock command successful, id: %d ", lock_id)
         await asyncio.sleep(UNLOCK_DELAY)
@@ -263,7 +267,13 @@ class TedeeClient:
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_LOCK
-            await http_request(url, "POST", self._api_header, self._timeout)
+            await http_request(
+                url,
+                "POST",
+                self._api_header,
+                self._session,
+                self._timeout,
+            )
         _LOGGER.debug("lock command successful, id: %s", lock_id)
         await asyncio.sleep(LOCK_DELAY)
 
@@ -277,7 +287,11 @@ class TedeeClient:
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=4"
             await http_request(
-                url, "POST", self._api_header, self._timeout, session=self._session
+                url,
+                "POST",
+                self._api_header,
+                self._session,
+                self._timeout,
             )
         _LOGGER.debug("Open command successful, id: %s", lock_id)
         await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
@@ -291,7 +305,11 @@ class TedeeClient:
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
             await http_request(
-                url, "POST", self._api_header, self._timeout, session=self._session
+                url,
+                "POST",
+                self._api_header,
+                self._session,
+                self._timeout,
             )
         _LOGGER.debug("Open command not successful, id: %s", lock_id)
         await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
@@ -361,9 +379,9 @@ class TedeeClient:
                     self._local_api_path + path,
                     http_method,
                     self._get_local_api_header(),
+                    self._session,
                     self._timeout,
                     json_data,
-                    session=self._session,
                 )
                 return True, r
             except TedeeAuthException as ex:

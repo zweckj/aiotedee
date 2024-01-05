@@ -1,11 +1,11 @@
 """Helper functions for pytedee_async."""
+from http import HTTPStatus
 from typing import Any, Mapping
 
 import aiohttp
 
 from .const import API_URL_DEVICE, TIMEOUT
 from .exception import TedeeAuthException, TedeeClientException, TedeeRateLimitException
-from http import HTTPStatus
 
 
 async def is_personal_key_valid(

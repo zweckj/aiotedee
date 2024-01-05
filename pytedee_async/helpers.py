@@ -51,23 +51,12 @@ async def http_request(
         raise ValueError(f"Unsupported HTTP method: {http_method}")
 
     try:
-        async with method(
+        response = await method(
             url,
             headers=headers,
             json=json_data,
             timeout=timeout,
-        ) as response:
-            status_code = response.status
-            if status_code in (200, 201, 204):
-                return await response.json()
-            if status_code == 401:
-                raise TedeeAuthException("Authentication failed.")
-            if status_code == 429:
-                raise TedeeRateLimitException("Tedee API Rate Limit.")
-
-            raise TedeeClientException(
-                f"Error during HTTP request. Status code {status_code}"
-            )
+        )
     except (
         aiohttp.ServerConnectionError,
         aiohttp.ClientError,
@@ -76,3 +65,11 @@ async def http_request(
         raise TedeeClientException(f"Error during http call: {exc}") from exc
 
     status_code = response.status
+    if status_code in (200, 201, 204):
+        return await response.json()
+    if status_code == 401:
+        raise TedeeAuthException("Authentication failed.")
+    if status_code == 429:
+        raise TedeeRateLimitException("Tedee API Rate Limit.")
+
+    raise TedeeClientException(f"Error during HTTP request. Status code {status_code}")

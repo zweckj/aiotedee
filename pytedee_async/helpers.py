@@ -45,19 +45,10 @@ async def http_request(
     json_data: Any = None,
 ) -> Any:
     """HTTP request wrapper."""
-    if http_method == "GET":
-        method = session.get
-    elif http_method == "POST":
-        method = session.post
-    elif http_method == "PUT":
-        method = session.put
-    elif http_method == "DELETE":
-        method = session.delete
-    else:
-        raise ValueError(f"Unsupported HTTP method: {http_method}")
 
     try:
-        response = await method(
+        response = await session.request(
+            http_method,
             url,
             headers=headers,
             json=json_data,

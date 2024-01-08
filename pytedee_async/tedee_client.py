@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from http import HTTPMethod
 from typing import Any, ValuesView
 
 import aiohttp
@@ -104,11 +105,11 @@ class TedeeClient:
 
     async def get_locks(self) -> None:
         """Get the list of registered locks"""
-        local_call_success, result = await self._local_api_call("/lock", "GET")
+        local_call_success, result = await self._local_api_call("/lock", HTTPMethod.GET)
         if not local_call_success:
             r = await http_request(
                 API_URL_LOCK,
-                "GET",
+                HTTPMethod.GET,
                 self._api_header,
                 self._session,
                 self._timeout,
@@ -165,11 +166,11 @@ class TedeeClient:
     async def sync(self) -> None:
         """Sync locks"""
         _LOGGER.debug("Syncing locks")
-        local_call_success, result = await self._local_api_call("/lock", "GET")
+        local_call_success, result = await self._local_api_call("/lock", HTTPMethod.GET)
         if not local_call_success:
             r = await http_request(
                 API_URL_SYNC,
-                "GET",
+                HTTPMethod.GET,
                 self._api_header,
                 self._session,
                 self._timeout,
@@ -211,7 +212,9 @@ class TedeeClient:
         """Get the local bridge"""
         if not self._use_local_api:
             raise TedeeClientException("Local API not configured.")
-        local_call_success, result = await self._local_api_call("/bridge", "GET")
+        local_call_success, result = await self._local_api_call(
+            "/bridge", HTTPMethod.GET
+        )
         if not local_call_success or not result:
             raise TedeeClientException("Unable to get local bridge")
         bridge_serial = result["serialNumber"]
@@ -223,7 +226,7 @@ class TedeeClient:
         _LOGGER.debug("Getting bridges...")
         r = await http_request(
             API_URL_BRIDGE,
-            "GET",
+            HTTPMethod.GET,
             self._api_header,
             self._session,
             self._timeout,
@@ -247,13 +250,13 @@ class TedeeClient:
         """Unlock method"""
         _LOGGER.debug("Unlocking lock %s...", str(lock_id))
         local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/unlock?mode=3", "POST"
+            f"/lock/{lock_id}/unlock?mode=3", HTTPMethod.POST
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=3"
             await http_request(
                 url,
-                "POST",
+                HTTPMethod.POST,
                 self._api_header,
                 self._session,
                 self._timeout,
@@ -265,13 +268,13 @@ class TedeeClient:
         """'Lock method"""
         _LOGGER.debug("Locking lock %s...", str(lock_id))
         local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/lock", "POST"
+            f"/lock/{lock_id}/lock", HTTPMethod.POST
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_LOCK
             await http_request(
                 url,
-                "POST",
+                HTTPMethod.POST,
                 self._api_header,
                 self._session,
                 self._timeout,
@@ -284,13 +287,13 @@ class TedeeClient:
         """Unlock the door and pull the door latch"""
         _LOGGER.debug("Opening lock %s...", str(lock_id))
         local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/unlock?mode=4", "POST"
+            f"/lock/{lock_id}/unlock?mode=4", HTTPMethod.POST
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=4"
             await http_request(
                 url,
-                "POST",
+                HTTPMethod.POST,
                 self._api_header,
                 self._session,
                 self._timeout,
@@ -302,13 +305,13 @@ class TedeeClient:
         """Only pull the door latch"""
         _LOGGER.debug("Pulling latch for lock %s...", str(lock_id))
         local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/pull", "POST"
+            f"/lock/{lock_id}/pull", HTTPMethod.POST
         )
         if not local_call_success:
             url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
             await http_request(
                 url,
-                "POST",
+                HTTPMethod.POST,
                 self._api_header,
                 self._session,
                 self._timeout,

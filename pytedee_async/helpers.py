@@ -66,6 +66,7 @@ async def http_request(
         HTTPStatus.OK,
         HTTPStatus.CREATED,
         HTTPStatus.ACCEPTED,
+        HTTPStatus.NO_CONTENT,
     ):
         return await response.json()
     if status_code == HTTPStatus.UNAUTHORIZED:

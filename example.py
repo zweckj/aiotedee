@@ -16,6 +16,8 @@ async def main():
     # client = await TedeeClient.create(personal_token, local_token, ip)
     client = TedeeClient(local_ip=ip, local_token=local_token)
     bridge = await client.get_local_bridge()
+    await client.delete_webhook(5)
+    await client.register_webhook("http://192.168.1.151/events")
     await client.get_locks()
     await client.sync()
     await client.sync()

@@ -459,19 +459,58 @@ class TedeeClient:
 
         self._locks_dict[lock_id] = lock
 
-    async def register_webhook(
+    async def update_webhooks(
         self, webhook_url: str, headers_bridge_sends: list | None = None
     ) -> None:
-        """Register the webhook"""
+        """Overrites all webhooks"""
         if headers_bridge_sends is None:
             headers_bridge_sends = []
         _LOGGER.debug("Registering webhook %s", webhook_url)
         data = [{"url": webhook_url, "headers": headers_bridge_sends}]
-        await self._local_api_call("/callback", "PUT", data)
+        await self._local_api_call("/callback", HTTPMethod.PUT, data)
         _LOGGER.debug("Webhook registered successfully.")
+
+    async def register_webhook(
+        self, webhook_url: str, headers_bridge_sends: list | None = None
+    ) -> int:
+        """Register a webhook, return the webhook id"""
+        if headers_bridge_sends is None:
+            headers_bridge_sends = []
+        _LOGGER.debug("Registering webhook %s", webhook_url)
+        data = {"url": webhook_url, "headers": headers_bridge_sends}
+        try:
+            success, result = await self._local_api_call("/callback", "POST", data)
+        except TedeeDataUpdateException as ex:
+            raise TedeeWebhookException("Unable to register webhook") from ex
+        if not success:
+            raise TedeeWebhookException("Unable to register webhook")
+        _LOGGER.debug("Webhook registered successfully.")
+        # get the webhook id
+        try:
+            success, result = await self._local_api_call("/callback", HTTPMethod.GET)
+        except TedeeDataUpdateException as ex:
+            raise TedeeWebhookException("Unable to get webhooks") from ex
+        if not success or result is None:
+            raise TedeeWebhookException("Unable to get webhooks")
+        for webhook in result:
+            if webhook["url"] == webhook_url:
+                return webhook["id"]
+        raise TedeeWebhookException("Webhook id not found")
 
     async def delete_webhooks(self) -> None:
         """Delete all webhooks"""
         _LOGGER.debug("Deleting webhooks...")
-        await self._local_api_call("/callback", "PUT", [])
+        try:
+            await self._local_api_call("/callback", "PUT", [])
+        except TedeeDataUpdateException as ex:
+            _LOGGER.debug("Unable to delete webhooks: %s", str(ex))
         _LOGGER.debug("Webhooks deleted successfully.")
+
+    async def delete_webhook(self, webhook_id: int) -> None:
+        """Delete a specific webhook"""
+        _LOGGER.debug("Deleting webhook %s", str(webhook_id))
+        try:
+            await self._local_api_call(f"/callback/{webhook_id}", HTTPMethod.DELETE)
+        except TedeeDataUpdateException as ex:
+            _LOGGER.debug("Unable to delete webhook: %s", str(ex))
+        _LOGGER.debug("Webhook deleted successfully.")

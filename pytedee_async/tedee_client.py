@@ -485,6 +485,10 @@ class TedeeClient:
         if not success:
             raise TedeeWebhookException("Unable to register webhook")
         _LOGGER.debug("Webhook registered successfully.")
+
+        if isinstance(result, dict) and "id" in result:
+            return result["id"]
+
         # get the webhook id
         try:
             success, result = await self._local_api_call("/callback", HTTPMethod.GET)

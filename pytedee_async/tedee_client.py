@@ -20,7 +20,6 @@ from .const import (
     API_URL_BRIDGE,
     API_URL_LOCK,
     API_URL_SYNC,
-    LOCAL_CALL_MIN_DISTANCE,
     LOCK_DELAY,
     TIMEOUT,
     UNLOCK_DELAY,
@@ -378,11 +377,6 @@ class TedeeClient:
     ) -> tuple[bool, Any | None]:
         """Call the local api"""
         if self._use_local_api:
-            if (
-                self._last_local_call
-                and time.time() - self._last_local_call < LOCAL_CALL_MIN_DISTANCE
-            ):
-                await asyncio.sleep(LOCAL_CALL_MIN_DISTANCE)
             try:
                 _LOGGER.debug("Getting locks from Local API...")
                 self._last_local_call = time.time()

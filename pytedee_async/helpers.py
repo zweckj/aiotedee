@@ -1,4 +1,5 @@
 """Helper functions for pytedee_async."""
+import asyncio
 from http import HTTPStatus
 from typing import Any, Mapping
 
@@ -26,6 +27,8 @@ async def is_personal_key_valid(
         )
     except (aiohttp.ClientError, aiohttp.ServerConnectionError, TimeoutError):
         return False
+
+    await asyncio.sleep(0.1)
 
     if response.status in (
         HTTPStatus.OK,
@@ -61,7 +64,10 @@ async def http_request(
     ) as exc:
         raise TedeeClientException(f"Error during http call: {exc}") from exc
 
+    await asyncio.sleep(0.1)
+
     status_code = response.status
+
     if response.status in (
         HTTPStatus.OK,
         HTTPStatus.CREATED,

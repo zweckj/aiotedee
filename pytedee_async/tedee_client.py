@@ -1,4 +1,5 @@
 """The TedeeClient class."""
+
 from __future__ import annotations
 
 import asyncio
@@ -512,3 +513,19 @@ class TedeeClient:
         except TedeeDataUpdateException as ex:
             _LOGGER.debug("Unable to delete webhook: %s", str(ex))
         _LOGGER.debug("Webhook deleted successfully.")
+
+    async def cleanup_webhooks_by_host(self, host: str) -> None:
+        """Delete all webhooks for a specific host"""
+        _LOGGER.debug("Deleting webhooks for host %s", host)
+        try:
+            success, result = await self._local_api_call("/callback", HTTPMethod.GET)
+        except TedeeDataUpdateException as ex:
+            _LOGGER.debug("Unable to get webhooks: %s", str(ex))
+            return
+        if not success or result is None:
+            _LOGGER.debug("Unable to get webhooks")
+            return
+        for webhook in result:
+            if host in webhook["url"]:
+                await self.delete_webhook(webhook["id"])
+        _LOGGER.debug("Webhooks deleted successfully.")

@@ -1,13 +1,16 @@
 """Test run."""
+
 import asyncio
 import json
+
+from pathlib import Path
 
 from pytedee_async import TedeeClient
 from pytedee_async.lock import TedeeLock
 
 
 async def main():
-    with open("config.json", encoding="utf-8") as f:
+    with open(f"{Path(__file__).parent}/config.json", encoding="utf-8") as f:
         data = json.load(f)
     personal_token = data["personalToken"]
     ip = data["ip"]
@@ -15,7 +18,8 @@ async def main():
 
     # client = await TedeeClient.create(personal_token, local_token, ip)
     client = TedeeClient(local_ip=ip, local_token=local_token)
-    bridge = await client.get_local_bridge()
+    await client.cleanup_webhooks_by_host("test")
+    # bridge = await client.get_local_bridge()
     # await client.delete_webhook(5)
     # await client.register_webhook("http://192.168.1.151/events")
     await client.get_locks()

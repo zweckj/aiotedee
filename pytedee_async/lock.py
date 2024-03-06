@@ -6,13 +6,17 @@ from enum import IntEnum
 class TedeeLockState(IntEnum):
     """Tedee Lock State."""
 
-    UNKNOWN = 0
+    UNCALIBRATED = 0
+    CALIBRATING = 1
     UNLOCKED = 2
     HALF_OPEN = 3
     UNLOCKING = 4
     LOCKING = 5
     LOCKED = 6
     PULLED = 7
+    PULLING = 8
+    UNKNOWN = 9
+    UPDATING = 18
 
 
 class TedeeLock:

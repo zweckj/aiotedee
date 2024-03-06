@@ -12,13 +12,13 @@ from pytedee_async.lock import TedeeLock
 async def main():
     with open(f"{Path(__file__).parent}/config.json", encoding="utf-8") as f:
         data = json.load(f)
-    personal_token = data["personalToken"]
+    # personal_token = data["personalToken"]
     ip = data["ip"]
     local_token = data["localToken"]
 
     # client = await TedeeClient.create(personal_token, local_token, ip)
     client = TedeeClient(local_ip=ip, local_token=local_token)
-    await client.cleanup_webhooks_by_host("test")
+    # await client.cleanup_webhooks_by_host("test")
     # bridge = await client.get_local_bridge()
     # await client.delete_webhook(5)
     # await client.register_webhook("http://192.168.1.151/events")

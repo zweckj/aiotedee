@@ -1,4 +1,5 @@
 """Helper functions for pytedee_async."""
+
 import asyncio
 from http import HTTPStatus
 from typing import Any, Mapping
@@ -79,5 +80,11 @@ async def http_request(
         raise TedeeAuthException("Authentication failed.")
     if status_code == HTTPStatus.TOO_MANY_REQUESTS:
         raise TedeeRateLimitException("Tedee API Rate Limit.")
+    if status_code == HTTPStatus.NOT_FOUND:
+        raise TedeeClientException("Resource not found.")
+    if status_code == HTTPStatus.NOT_ACCEPTABLE:
+        raise TedeeClientException("Request not acceptable.")
+    if status_code == HTTPStatus.CONFLICT:
+        raise TedeeClientException("Conflict.")
 
     raise TedeeClientException(f"Error during HTTP request. Status code {status_code}")

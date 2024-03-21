@@ -36,6 +36,7 @@ from .exception import (
 from .helpers import http_request
 from .lock import TedeeLock, TedeeLockState
 
+NUM_RETRIES = 3
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -377,7 +378,10 @@ class TedeeClient:
         self, path: str, http_method: str, json_data=None
     ) -> tuple[bool, Any | None]:
         """Call the local api"""
-        if self._use_local_api:
+
+        if not self._use_local_api:
+            return False, None
+        for retry_number in range(1, NUM_RETRIES + 1):
             try:
                 _LOGGER.debug("Getting locks from Local API...")
                 self._last_local_call = time.time()
@@ -389,15 +393,14 @@ class TedeeClient:
                     self._timeout,
                     json_data,
                 )
-                return True, r
             except TedeeAuthException as ex:
                 msg = "Local API authentication failed."
-                if not self._personal_token:
+                if not self._personal_token and (retry_number == NUM_RETRIES):
                     raise TedeeLocalAuthException(msg) from ex
 
                 _LOGGER.debug(msg)
             except (TedeeClientException, TedeeRateLimitException) as ex:
-                if not self._personal_token:
+                if not self._personal_token and (retry_number == NUM_RETRIES):
                     _LOGGER.debug(
                         "Error while calling local API endpoint %s. Error: %s. Full error: %s",
                         path,
@@ -415,6 +418,10 @@ class TedeeClient:
                     type(ex).__name__,
                 )
                 _LOGGER.debug("Full error: %s", str(ex), exc_info=True)
+
+            else:
+                return True, r
+            await asyncio.sleep(0.5)
         return False, None
 
     def parse_webhook_message(self, message: dict) -> None:

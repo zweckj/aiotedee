@@ -481,7 +481,9 @@ class TedeeClient:
         _LOGGER.debug("Registering webhook %s", webhook_url)
         data = {"url": webhook_url, "headers": headers_bridge_sends}
         try:
-            success, result = await self._local_api_call("/callback", "POST", data)
+            success, result = await self._local_api_call(
+                "/callback", HTTPMethod.POST, data
+            )
         except TedeeDataUpdateException as ex:
             raise TedeeWebhookException("Unable to register webhook") from ex
         if not success:
@@ -492,22 +494,29 @@ class TedeeClient:
             return result["id"]
 
         # get the webhook id
+        result = await self.get_webhooks()
+        for webhook in result:
+            if webhook["url"] == webhook_url:
+                return webhook["id"]
+        raise TedeeWebhookException("Webhook id not found")
+
+    async def get_webhooks(self) -> list[dict[str, Any]]:
+        """Get a list of all webhooks"""
+        _LOGGER.debug("Getting webhooks...")
         try:
             success, result = await self._local_api_call("/callback", HTTPMethod.GET)
         except TedeeDataUpdateException as ex:
             raise TedeeWebhookException("Unable to get webhooks") from ex
         if not success or result is None:
             raise TedeeWebhookException("Unable to get webhooks")
-        for webhook in result:
-            if webhook["url"] == webhook_url:
-                return webhook["id"]
-        raise TedeeWebhookException("Webhook id not found")
+        _LOGGER.debug("Webhooks retrieved successfully.")
+        return result
 
     async def delete_webhooks(self) -> None:
         """Delete all webhooks"""
         _LOGGER.debug("Deleting webhooks...")
         try:
-            await self._local_api_call("/callback", "PUT", [])
+            await self._local_api_call("/callback", HTTPMethod.PUT, [])
         except TedeeDataUpdateException as ex:
             _LOGGER.debug("Unable to delete webhooks: %s", str(ex))
         _LOGGER.debug("Webhooks deleted successfully.")

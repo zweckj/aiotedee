@@ -17,6 +17,7 @@ class TedeeLockState(IntEnum):
     PULLING = 8
     UNKNOWN = 9
     UPDATING = 18
+    ERROR = 255
 
 
 class TedeeLock:

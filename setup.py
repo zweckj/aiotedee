@@ -4,14 +4,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="pytedee_async",
+    name="aiotedee",
     version="0.2.20",
     author="Josef Zweck",
     author_email="24647999+zweckj@users.noreply.github.com",
-    description="A Tedee Lock Client package",
+    description="A package to interact with Tedee locks using asyncio",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/zweckj/pytedee_async",
+    url="https://github.com/zweckj/aiotedee",
     packages=setuptools.find_packages(),
     install_requires=["aiohttp"],
     license="MIT",
@@ -24,5 +24,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.9",
-    package_data={"pytedee_async": ["py.typed"]},
+    package_data={"aiotedee": ["py.typed"]},
 )

@@ -1,4 +1,5 @@
-"""Constants for pytedee_async."""
+"""Constants for aiotedee."""
+
 API_URL_BASE = "https://api.tedee.com/api/v1.32/"
 API_URL_DEVICE = API_URL_BASE + "my/device/"
 API_URL_LOCK = API_URL_BASE + "my/lock/"

@@ -1,4 +1,4 @@
-"""Exceptions for pytedee_async."""
+"""Exceptions for aiotedee."""
 
 
 class TedeeClientException(Exception):

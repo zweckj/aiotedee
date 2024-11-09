@@ -1,4 +1,4 @@
-"""Helper functions for pytedee_async."""
+"""Helper functions for aiotedee."""
 
 import asyncio
 from http import HTTPStatus

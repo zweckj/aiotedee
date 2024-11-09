@@ -5,8 +5,8 @@ import json
 
 from pathlib import Path
 
-from pytedee_async import TedeeClient
-from pytedee_async.lock import TedeeLock
+from aiotedee import TedeeClient
+from aiotedee.lock import TedeeLock
 
 
 async def main():

@@ -1,0 +1,37 @@
+[project]
+name = "aiotedee"
+version = "0.2.21"
+license = {text = "MIT License"}
+description = "A package to interact with Tedee locks using asyncio"
+readme = "README.md"
+authors = [{name = "Josef Zweck", email = "24647999+zweckj@users.noreply.github.com"}]
+maintainers = [{name = "Josef Zweck", email = "24647999+zweckj@users.noreply.github.com"}]
+keywords = ["Tedee", "api", "async", "client"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "aiohttp >= 3.8.1",
+]
+requires-python = ">= 3.9"
+
+[project.urls]
+Homepage = "https://github.com/zweckj/aiotedee"
+Repository = "https://github.com/zweckj/aiotedee"
+Documentation = "https://github.com/zweckj/aiotedee"
+
+[project.optional-dependencies]
+dev = [
+    "covdefaults == 2.3.0",
+    "coverage == 7.6.7",
+    "syrupy == 4.7.2",
+    "pytest == 8.3.3",
+    "pytest-asyncio == 0.24.0",
+    "pytest-cov == 6.0.0",
+]

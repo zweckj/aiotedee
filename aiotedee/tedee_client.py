@@ -141,6 +141,7 @@ class TedeeClient:
             ) = self.parse_lock_properties(lock_json)
             (
                 is_enabled_pullspring,
+                is_enabled_auto_pullspring,
                 duration_pullspring,
             ) = self.parse_pull_spring_settings(lock_json)
 
@@ -154,6 +155,7 @@ class TedeeClient:
                 is_charging,
                 state_change_result,
                 is_enabled_pullspring,
+                is_enabled_auto_pullspring,
                 duration_pullspring,
             )
 
@@ -203,6 +205,7 @@ class TedeeClient:
             if local_call_success:
                 (
                     lock.is_enabled_pullspring,
+                    lock.is_enabled_auto_pullspring,
                     lock.duration_pullspring,
                 ) = self.parse_pull_spring_settings(lock_json)
 
@@ -354,8 +357,9 @@ class TedeeClient:
         """Parse the pull spring settings"""
         device_settings = settings.get("deviceSettings", {})
         pull_spring_enabled = bool(device_settings.get("pullSpringEnabled", False))
+        pull_spring_auto_enabled = bool(device_settings.get("autoPullSpringEnabled", False))
         pull_spring_duration = device_settings.get("pullSpringDuration", 5)
-        return pull_spring_enabled, pull_spring_duration
+        return pull_spring_enabled, pull_spring_auto_enabled, pull_spring_duration
 
     def _calculate_secure_local_token(self) -> str:
         """Calculate the secure token"""

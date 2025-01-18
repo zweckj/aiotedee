@@ -34,6 +34,7 @@ class TedeeLock:
         is_charging: bool = False,
         state_change_result: int = 0,
         is_enabled_pullspring: bool = False,
+        is_enabled_auto_pullspring: bool = False,
         duration_pullspring: int = 0,
     ) -> None:
         """Initialize a new lock."""
@@ -47,6 +48,7 @@ class TedeeLock:
         self._state_change_result = state_change_result
         self._duration_pullspring = duration_pullspring
         self._is_enabled_pullspring = is_enabled_pullspring
+        self._is_enabled_auto_pullspring = is_enabled_auto_pullspring
 
     @property
     def lock_name(self) -> str:
@@ -138,6 +140,15 @@ class TedeeLock:
         self._is_enabled_pullspring = value
 
     @property
+    def is_enabled_auto_pullspring(self) -> bool:
+        """Return true if the lock is charging."""
+        return bool(self._is_enabled_auto_pullspring)
+
+    @is_enabled_auto_pullspring.setter
+    def is_enabled_auto_pullspring(self, value: bool):
+        self._is_enabled_auto_pullspring = value    
+
+    @property
     def duration_pullspring(self) -> int:
         """Return the duration of the pullspring."""
         return self._duration_pullspring
@@ -158,5 +169,6 @@ class TedeeLock:
             "is_charging": self._is_charging,
             "state_change_result": self._state_change_result,
             "is_enabled_pullspring": self._is_enabled_pullspring,
+            "is_enabled_auto_pullspring": self._is_enabled_auto_pullspring,
             "duration_pullspring": self._duration_pullspring,
         }

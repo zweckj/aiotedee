@@ -1,6 +1,6 @@
 [project]
 name = "aiotedee"
-version = "0.2.21"
+version = "0.2.22"
 license = {text = "MIT License"}
 description = "A package to interact with Tedee locks using asyncio"
 readme = "README.md"

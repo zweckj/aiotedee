@@ -24,6 +24,8 @@ from .const import (
     LOCK_DELAY,
     TIMEOUT,
     UNLOCK_DELAY,
+    API_TOKEN_MODE_PLAIN,
+    API_TOKEN_MODE_SECURE,
 )
 from .exception import (
     TedeeAuthException,
@@ -51,6 +53,7 @@ class TedeeClient:
         timeout: int = TIMEOUT,
         bridge_id: int | None = None,
         session: aiohttp.ClientSession | None = None,
+        api_token_mode: str = API_TOKEN_MODE_SECURE,
     ):
         """Constructor"""
         self._available = False
@@ -60,6 +63,7 @@ class TedeeClient:
         self._local_ip = local_ip
         self._timeout = timeout
         self._bridge_id = bridge_id
+        self._api_token_mode = api_token_mode
 
         self._use_local_api: bool = bool(local_token and local_ip)
         self._last_local_call: float | None = None
@@ -375,7 +379,15 @@ class TedeeClient:
         """Get the local api header"""
         if not self._local_token:
             return {}
-        token = self._calculate_secure_local_token() if secure else self._local_token
+        if self._api_token_mode == API_TOKEN_MODE_SECURE:
+            token = self._calculate_secure_local_token()
+        elif self._api_token_mode == API_TOKEN_MODE_PLAIN:
+            token = self._local_token
+        else:
+            _LOGGER.warning(
+                "Unknown api_token_mode %s, defaulting to secure.", self._api_token_mode
+            )
+            token = self._calculate_secure_local_token()        
         return {"Content-Type": "application/json", "api_token": token}
 
     async def _local_api_call(

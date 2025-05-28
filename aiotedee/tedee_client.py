@@ -161,7 +161,7 @@ class TedeeClient:
 
             self._locks_dict[lock_id] = lock
 
-        if lock_id is None:
+        if not self._locks_dict:
             raise TedeeClientException("No lock found")
 
         _LOGGER.debug("Locks retrieved successfully...")

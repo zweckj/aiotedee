@@ -52,7 +52,7 @@ class TedeeClient:
         timeout: int = TIMEOUT,
         bridge_id: int | None = None,
         session: aiohttp.ClientSession | None = None,
-        api_token_mode_plain: str = API_TOKEN_MODE_PLAIN,
+        api_token_mode_plain: bool = False,
     ):
         """Constructor"""
         self._available = False

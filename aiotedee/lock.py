@@ -102,6 +102,10 @@ class TedeeLock:
         """Return the state of the lock."""
         return TedeeLockState(self._state)
 
+    @state.setter
+    def state(self, status: int):
+        self._state = status
+
     @property
     def door_state(self) -> TedeeDoorState:
         """Return the state of the door."""
@@ -110,10 +114,6 @@ class TedeeLock:
     @door_state.setter
     def door_state(self, state: int):
         self._door_state = state
-
-    @state.setter
-    def state(self, status: int):
-        self._state = status
 
     @property
     def state_change_result(self) -> int:
@@ -192,4 +192,5 @@ class TedeeLock:
             "is_enabled_pullspring": self._is_enabled_pullspring,
             "is_enabled_auto_pullspring": self._is_enabled_auto_pullspring,
             "duration_pullspring": self._duration_pullspring,
+            "door_state": self._door_state,
         }

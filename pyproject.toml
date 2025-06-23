@@ -1,11 +1,15 @@
 [project]
 name = "aiotedee"
-version = "0.2.23"
-license = {text = "MIT License"}
+version = "0.2.24"
+license = { text = "MIT License" }
 description = "A package to interact with Tedee locks using asyncio"
 readme = "README.md"
-authors = [{name = "Josef Zweck", email = "24647999+zweckj@users.noreply.github.com"}]
-maintainers = [{name = "Josef Zweck", email = "24647999+zweckj@users.noreply.github.com"}]
+authors = [
+    { name = "Josef Zweck", email = "24647999+zweckj@users.noreply.github.com" },
+]
+maintainers = [
+    { name = "Josef Zweck", email = "24647999+zweckj@users.noreply.github.com" },
+]
 keywords = ["Tedee", "api", "async", "client"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -16,9 +20,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = [
-    "aiohttp >= 3.8.1",
-]
+dependencies = ["aiohttp >= 3.8.1"]
 requires-python = ">= 3.9"
 
 [project.urls]

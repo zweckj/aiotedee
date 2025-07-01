@@ -378,10 +378,7 @@ class TedeeClient:
         """Get the local api header"""
         if not self._local_token:
             return {}
-        if  self._api_token_mode_plain:
-            token = self._local_token
-        else:
-            token = self._calculate_secure_local_token()
+        token = self._calculate_secure_local_token() if secure else self._local_token
         return {"Content-Type": "application/json", "api_token": token}
 
     async def _local_api_call(
@@ -398,7 +395,7 @@ class TedeeClient:
                 r = await http_request(
                     self._local_api_path + path,
                     http_method,
-                    self._get_local_api_header(),
+                    self._get_local_api_header(not self._api_token_mode_plain),
                     self._session,
                     self._timeout,
                     json_data,

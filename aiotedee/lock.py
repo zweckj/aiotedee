@@ -20,6 +20,16 @@ class TedeeLockState(IntEnum):
     UNPULLING = 255
 
 
+class TedeeDoorState(IntEnum):
+    """Tedee Door State."""
+
+    NOT_PAIRED = 0
+    DISCONNECTED = 1
+    OPENED = 2
+    CLOSED = 3
+    UNCALIBRATED = 4
+
+
 class TedeeLock:
     """Tedee Lock."""
 
@@ -36,6 +46,7 @@ class TedeeLock:
         is_enabled_pullspring: bool = False,
         is_enabled_auto_pullspring: bool = False,
         duration_pullspring: int = 0,
+        door_state: int = 0,
     ) -> None:
         """Initialize a new lock."""
         self._lock_name = lock_name
@@ -49,6 +60,7 @@ class TedeeLock:
         self._duration_pullspring = duration_pullspring
         self._is_enabled_pullspring = is_enabled_pullspring
         self._is_enabled_auto_pullspring = is_enabled_auto_pullspring
+        self._door_state = door_state
 
     @property
     def lock_name(self) -> str:
@@ -93,6 +105,15 @@ class TedeeLock:
     @state.setter
     def state(self, status: int):
         self._state = status
+
+    @property
+    def door_state(self) -> TedeeDoorState:
+        """Return the state of the door."""
+        return TedeeDoorState(self._door_state)
+
+    @door_state.setter
+    def door_state(self, state: int):
+        self._door_state = state
 
     @property
     def state_change_result(self) -> int:
@@ -146,7 +167,7 @@ class TedeeLock:
 
     @is_enabled_auto_pullspring.setter
     def is_enabled_auto_pullspring(self, value: bool):
-        self._is_enabled_auto_pullspring = value    
+        self._is_enabled_auto_pullspring = value
 
     @property
     def duration_pullspring(self) -> int:
@@ -171,4 +192,5 @@ class TedeeLock:
             "is_enabled_pullspring": self._is_enabled_pullspring,
             "is_enabled_auto_pullspring": self._is_enabled_auto_pullspring,
             "duration_pullspring": self._duration_pullspring,
+            "door_state": self._door_state,
         }

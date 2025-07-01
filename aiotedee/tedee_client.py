@@ -141,6 +141,7 @@ class TedeeClient:
                 battery_level,
                 is_charging,
                 state_change_result,
+                door_state
             ) = self.parse_lock_properties(lock_json)
             (
                 is_enabled_pullspring,
@@ -160,11 +161,12 @@ class TedeeClient:
                 is_enabled_pullspring,
                 is_enabled_auto_pullspring,
                 duration_pullspring,
+                door_state,
             )
 
             self._locks_dict[lock_id] = lock
 
-        if lock_id is None:
+        if not self._locks_dict:
             raise TedeeClientException("No lock found")
 
         _LOGGER.debug("Locks retrieved successfully...")
@@ -203,6 +205,7 @@ class TedeeClient:
                 lock.battery_level,
                 lock.is_charging,
                 lock.state_change_result,
+                lock.door_state,
             ) = self.parse_lock_properties(lock_json)
 
             if local_call_success:
@@ -347,14 +350,16 @@ class TedeeClient:
             battery_level = lock_properties.get("batteryLevel", 50)
             is_charging = lock_properties.get("isCharging", False)
             state_change_result = lock_properties.get("stateChangeResult", 0)
+            door_state = lock_properties.get("doorState", 0)
         else:
             # local call does not have lock properties
             state = json_properties.get("state", 9)
             battery_level = json_properties.get("batteryLevel", 50)
             is_charging = bool(json_properties.get("isCharging", False))
             state_change_result = json_properties.get("jammed", 0)
+            door_state = json_properties.get("doorState", 0)
 
-        return connected, state, battery_level, is_charging, state_change_result
+        return connected, state, battery_level, is_charging, state_change_result, door_state
 
     def parse_pull_spring_settings(self, settings: dict):
         """Parse the pull spring settings"""

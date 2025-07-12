@@ -24,6 +24,7 @@ from .const import (
     LOCK_DELAY,
     TIMEOUT,
     UNLOCK_DELAY,
+    API_TOKEN_MODE_PLAIN,
 )
 from .exception import (
     TedeeAuthException,
@@ -51,6 +52,7 @@ class TedeeClient:
         timeout: int = TIMEOUT,
         bridge_id: int | None = None,
         session: aiohttp.ClientSession | None = None,
+        api_token_mode_plain: bool = False,
     ):
         """Constructor"""
         self._available = False
@@ -60,6 +62,7 @@ class TedeeClient:
         self._local_ip = local_ip
         self._timeout = timeout
         self._bridge_id = bridge_id
+        self._api_token_mode_plain = api_token_mode_plain
 
         self._use_local_api: bool = bool(local_token and local_ip)
         self._last_local_call: float | None = None
@@ -397,7 +400,7 @@ class TedeeClient:
                 r = await http_request(
                     self._local_api_path + path,
                     http_method,
-                    self._get_local_api_header(),
+                    self._get_local_api_header(not self._api_token_mode_plain),
                     self._session,
                     self._timeout,
                     json_data,

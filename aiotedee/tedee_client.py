@@ -461,6 +461,7 @@ class TedeeClient:
         elif message_type == "lock-status-changed":
             lock.state = data.get("state", 0)
             lock.state_change_result = data.get("jammed", 0)
+            lock.door_state = data.get("doorState", 0)
         elif message_type == "device-battery-level-changed":
             lock.battery_level = data.get("batteryLevel", 50)
         elif message_type == "device-battery-start-charging":

@@ -35,7 +35,13 @@ from .exception import (
     TedeeWebhookException,
 )
 from .helpers import http_request
-from .lock import TedeeDoorState, TedeeLock, TedeeLockState
+from .lock import (
+    TedeeDoorState,
+    TedeeLock,
+    TedeeLockState,
+    _safe_door_state,
+    _safe_lock_state,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -468,9 +474,9 @@ def _handle_connection_changed(lock: TedeeLock, data: dict) -> None:
 
 
 def _handle_lock_status_changed(lock: TedeeLock, data: dict) -> None:
-    lock.state = TedeeLockState(data.get("state", 0))
+    lock.state = _safe_lock_state(data.get("state", 0))
     lock.state_change_result = data.get("jammed", 0)
-    lock.door_state = TedeeDoorState(data.get("doorState", 0))
+    lock.door_state = _safe_door_state(data.get("doorState", 0))
 
 
 def _handle_battery_level_changed(lock: TedeeLock, data: dict) -> None:

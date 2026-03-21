@@ -122,6 +122,22 @@ class TedeeLock(DataClassDictMixin):
             ) = _parse_pull_spring_settings(data)
 
 
+def _safe_lock_state(value: int) -> TedeeLockState:
+    """Convert an int to TedeeLockState, falling back to UNKNOWN."""
+    try:
+        return TedeeLockState(value)
+    except ValueError:
+        return TedeeLockState.UNKNOWN
+
+
+def _safe_door_state(value: int) -> TedeeDoorState:
+    """Convert an int to TedeeDoorState, falling back to NOT_PAIRED."""
+    try:
+        return TedeeDoorState(value)
+    except ValueError:
+        return TedeeDoorState.NOT_PAIRED
+
+
 def _parse_lock_properties(
     data: dict,
 ) -> tuple[TedeeLockState, int | None, bool, int, TedeeDoorState]:
@@ -133,10 +149,10 @@ def _parse_lock_properties(
     lock_props = data.get("lockProperties")
     source = lock_props if lock_props is not None else data
 
-    state = TedeeLockState(source.get("state", TedeeLockState.UNKNOWN))
+    state = _safe_lock_state(source.get("state", TedeeLockState.UNKNOWN))
     battery_level: int | None = source.get("batteryLevel")
     is_charging = bool(source.get("isCharging", False))
-    door_state = TedeeDoorState(source.get("doorState", TedeeDoorState.NOT_PAIRED))
+    door_state = _safe_door_state(source.get("doorState", TedeeDoorState.NOT_PAIRED))
 
     # The cloud API uses ``stateChangeResult`` while the local API uses ``jammed``.
     if lock_props is not None:

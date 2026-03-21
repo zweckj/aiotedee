@@ -44,7 +44,7 @@ def _noop(_lock: TedeeLock, _data: dict) -> None:
     pass
 
 
-WebhookHandler = Callable[[TedeeLock, dict], None]
+WebhookHandler = Callable[[TedeeLock, dict[str, Any]], None]
 
 WEBHOOK_HANDLERS: dict[str, WebhookHandler] = {
     "device-connection-changed": _handle_connection_changed,

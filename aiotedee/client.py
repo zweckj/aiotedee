@@ -35,7 +35,7 @@ from .exceptions import (
 )
 from .helpers import http_request
 from .models import TedeeBridge, TedeeLock, TedeeLockState
-from .webhook import WEBHOOK_HANDLERS, _noop
+from .webhook import WEBHOOK_HANDLERS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -248,7 +248,11 @@ class TedeeClient:
         if lock is None:
             return
 
-        WEBHOOK_HANDLERS.get(event, _noop)(lock, data)
+        handler = WEBHOOK_HANDLERS.get(event)
+        if handler is None:
+            _LOGGER.debug("Unknown webhook event: %s", event)
+            return
+        handler(lock, data)
         self._locks[lock_id] = lock
 
     async def update_webhooks(

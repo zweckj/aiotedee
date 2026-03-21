@@ -4,9 +4,7 @@ Class hierarchy::
 
     TedeeClientBase          - shared state, properties, business logic
     ├── TedeeLocalClient     - local bridge API transport + webhook management
-    ├── TedeeCloudClient     - cloud API transport + get_bridges()
-    └── TedeeClient          - combined local-first / cloud-fallback (backward compat)
-         (TedeeLocalClient, TedeeCloudClient)
+    └── TedeeCloudClient     - cloud API transport + get_bridges()
 """
 
 from __future__ import annotations
@@ -72,8 +70,6 @@ class TedeeClientBase:
         self._bridge_id = bridge_id
         self._locks: dict[int, TedeeLock] = {}
         self._session = session or ClientSession()
-        # Default: no cloud credentials (overridden by TedeeCloudClient).
-        self._personal_token: str | None = None
 
     # -- Public properties -----------------------------------------------------
 
@@ -388,13 +384,13 @@ class TedeeLocalClient(TedeeClientBase):
                     json_data,
                 )
             except TedeeAuthException as ex:
-                if not self._personal_token and attempt == NUM_RETRIES:
+                if attempt == NUM_RETRIES:
                     raise TedeeLocalAuthException(
                         "Local API authentication failed."
                     ) from ex
                 _LOGGER.debug("Local API authentication failed.")
             except (TedeeClientException, TedeeRateLimitException) as ex:
-                if not self._personal_token and attempt == NUM_RETRIES:
+                if attempt == NUM_RETRIES:
                     raise TedeeDataUpdateException(
                         f"Error while calling local API endpoint {path}."
                     ) from ex
@@ -496,116 +492,3 @@ class TedeeCloudClient(TedeeClientBase):
         bridges = [TedeeBridge.from_api_response(b) for b in r["result"]]
         _LOGGER.debug("Bridges retrieved successfully")
         return bridges
-
-
-# =============================================================================
-# Combined client (backward-compatible)
-# =============================================================================
-
-
-class TedeeClient(TedeeLocalClient, TedeeCloudClient):
-    """Combined client: local-first with cloud-fallback.
-
-    This is the main entry point for most users.  When both a *local_token*
-    (+ *local_ip*) and a *personal_token* are provided, API calls first
-    attempt the local bridge and transparently fall back to the Tedee cloud.
-    """
-
-    def __init__(
-        self,
-        personal_token: str | None = None,
-        local_token: str | None = None,
-        local_ip: str | None = None,
-        timeout: int = TIMEOUT,
-        bridge_id: int | None = None,
-        session: ClientSession | None = None,
-        api_token_mode_plain: bool = False,
-    ) -> None:
-        """Initialize the Tedee client.
-
-        Args:
-            personal_token: Cloud API personal token.
-            local_token: Local bridge API token.
-            local_ip: Local bridge IP address.
-            timeout: HTTP request timeout in seconds.
-            bridge_id: Filter locks to a specific bridge.
-            session: Optional shared aiohttp session.
-            api_token_mode_plain: Use plain (unsecured) local API token.
-        """
-        super().__init__(
-            personal_token=personal_token or "",
-            local_token=local_token or "",
-            local_ip=local_ip or "",
-            api_token_mode_plain=api_token_mode_plain,
-            timeout=timeout,
-            bridge_id=bridge_id,
-            session=session,
-        )
-        _LOGGER.debug("Using local API: %s", self._use_local_api)
-
-    @classmethod
-    async def create(
-        cls,
-        personal_token: str | None = None,
-        local_token: str | None = None,
-        local_ip: str | None = None,
-        bridge_id: int | None = None,
-        timeout: int = TIMEOUT,
-    ) -> TedeeClient:
-        """Create and initialize a TedeeClient with locks already fetched."""
-        client = cls(personal_token, local_token, local_ip, timeout, bridge_id)
-        await client.get_locks()
-        return client
-
-    # -- Transport implementations (local-first, cloud-fallback) ---------------
-
-    async def _fetch_locks(self) -> list[dict]:
-        if self._use_local_api:
-            success, result = await self._local_api_call("/lock", HTTPMethod.GET)
-            if success and result is not None:
-                return result
-
-        r = await http_request(
-            API_URL_LOCK,
-            HTTPMethod.GET,
-            self._cloud_headers,
-            self._session,
-            self._timeout,
-        )
-        return r["result"] if isinstance(r, dict) else r
-
-    async def _fetch_sync(self) -> tuple[list[dict], bool]:
-        if self._use_local_api:
-            success, result = await self._local_api_call("/lock", HTTPMethod.GET)
-            if success and result is not None:
-                return result, True
-
-        r = await http_request(
-            API_URL_SYNC,
-            HTTPMethod.GET,
-            self._cloud_headers,
-            self._session,
-            self._timeout,
-        )
-        result = r["result"] if isinstance(r, dict) else r
-        return result, False
-
-    async def _execute_lock_operation(
-        self,
-        lock_id: int,
-        action: str,
-    ) -> None:
-        if self._use_local_api:
-            path = f"/lock/{lock_id}/{action}"
-            success, _ = await self._local_api_call(path, HTTPMethod.POST)
-            if success:
-                return
-
-        url = f"{API_URL_LOCK}{lock_id}/operation/{action}"
-        await http_request(
-            url,
-            HTTPMethod.POST,
-            self._cloud_headers,
-            self._session,
-            self._timeout,
-        )

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from http import HTTPStatus
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiohttp import ClientError, ClientSession, ServerConnectionError
+from aiohttp import ClientError, ClientSession
 
 from aiotedee.exceptions import (
     TedeeAuthException,
@@ -26,100 +25,66 @@ def _mock_response(status: int, json_data=None):
     return resp
 
 
-class TestHttpRequest:
-    async def test_success_returns_json(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(200, {"ok": True}))
+@pytest.mark.parametrize(
+    ("status", "json_data"),
+    [(200, {"ok": True}), (201, {"id": 1}), (202, {}), (204, None)],
+    ids=["200-ok", "201-created", "202-accepted", "204-no-content"],
+)
+async def test_http_request_success(status, json_data):
+    session = MagicMock(spec=ClientSession)
+    session.request = AsyncMock(return_value=_mock_response(status, json_data))
+    result = await http_request("http://x", "GET", {}, session, timeout=5)
+    assert result == json_data
 
-        result = await http_request("http://x", "GET", {}, session, timeout=5)
-        assert result == {"ok": True}
 
-    async def test_201_accepted(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(201, {"id": 1}))
+@pytest.mark.parametrize(
+    ("status", "exc_type", "match"),
+    [
+        (401, TedeeAuthException, "Authentication"),
+        (429, TedeeRateLimitException, "Rate Limit"),
+        (404, TedeeClientException, "not found"),
+        (406, TedeeClientException, "not acceptable"),
+        (409, TedeeClientException, "Conflict"),
+        (500, TedeeClientException, "500"),
+    ],
+    ids=["401-auth", "429-rate-limit", "404-not-found", "406-not-acceptable", "409-conflict", "500-server-error"],
+)
+async def test_http_request_error_status(status, exc_type, match):
+    session = MagicMock(spec=ClientSession)
+    session.request = AsyncMock(return_value=_mock_response(status))
+    with pytest.raises(exc_type, match=match):
+        await http_request("http://x", "GET", {}, session, timeout=5)
 
-        result = await http_request("http://x", "POST", {}, session, timeout=5)
-        assert result == {"id": 1}
 
-    async def test_401_raises_auth_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(401))
-
-        with pytest.raises(TedeeAuthException):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_429_raises_rate_limit(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(429))
-
-        with pytest.raises(TedeeRateLimitException):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_404_raises_client_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(404))
-
-        with pytest.raises(TedeeClientException, match="not found"):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_406_raises_client_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(406))
-
-        with pytest.raises(TedeeClientException, match="not acceptable"):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_409_raises_client_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(409))
-
-        with pytest.raises(TedeeClientException, match="Conflict"):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_500_raises_generic_client_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(return_value=_mock_response(500))
-
-        with pytest.raises(TedeeClientException, match="500"):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_connection_error_raises_client_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(side_effect=ClientError("conn refused"))
-
-        with pytest.raises(TedeeClientException, match="Error during http call"):
-            await http_request("http://x", "GET", {}, session, timeout=5)
-
-    async def test_timeout_error_raises_client_exception(self):
-        session = MagicMock(spec=ClientSession)
-        session.request = AsyncMock(side_effect=TimeoutError())
-
-        with pytest.raises(TedeeClientException):
-            await http_request("http://x", "GET", {}, session, timeout=5)
+@pytest.mark.parametrize(
+    "exc",
+    [ClientError("conn refused"), TimeoutError()],
+    ids=["client-error", "timeout"],
+)
+async def test_http_request_connection_errors(exc):
+    session = MagicMock(spec=ClientSession)
+    session.request = AsyncMock(side_effect=exc)
+    with pytest.raises(TedeeClientException):
+        await http_request("http://x", "GET", {}, session, timeout=5)
 
 
 # -- is_personal_key_valid -----------------------------------------------------
 
 
-class TestIsPersonalKeyValid:
-    async def test_valid_key(self):
-        session = MagicMock(spec=ClientSession)
-        resp = AsyncMock()
-        resp.status = 200
-        session.get = AsyncMock(return_value=resp)
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [(200, True), (201, True), (202, True), (401, False), (500, False)],
+    ids=["200-valid", "201-valid", "202-valid", "401-invalid", "500-invalid"],
+)
+async def test_is_personal_key_valid_by_status(status, expected):
+    session = MagicMock(spec=ClientSession)
+    resp = AsyncMock()
+    resp.status = status
+    session.get = AsyncMock(return_value=resp)
+    assert await is_personal_key_valid("key", session) is expected
 
-        assert await is_personal_key_valid("key", session) is True
 
-    async def test_invalid_key_401(self):
-        session = MagicMock(spec=ClientSession)
-        resp = AsyncMock()
-        resp.status = 401
-        session.get = AsyncMock(return_value=resp)
-
-        assert await is_personal_key_valid("bad", session) is False
-
-    async def test_connection_error_returns_false(self):
-        session = MagicMock(spec=ClientSession)
-        session.get = AsyncMock(side_effect=ClientError())
-
-        assert await is_personal_key_valid("key", session) is False
+async def test_is_personal_key_valid_connection_error():
+    session = MagicMock(spec=ClientSession)
+    session.get = AsyncMock(side_effect=ClientError())
+    assert await is_personal_key_valid("key", session) is False

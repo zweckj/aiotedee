@@ -4,7 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from aiotedee import TedeeClient
+from aiotedee import TedeeLocalClient
 
 
 async def main():
@@ -13,7 +13,7 @@ async def main():
     ip = data["ip"]
     local_token = data["localToken"]
 
-    client = TedeeClient(local_ip=ip, local_token=local_token)
+    client = TedeeLocalClient(local_ip=ip, local_token=local_token)
     await client.get_locks()
     await client.sync()
 

@@ -2,10 +2,10 @@
 
 Class hierarchy::
 
-    TedeeClientBase          – shared state, properties, business logic
-    ├── TedeeLocalClient     – local bridge API transport + webhook management
-    ├── TedeeCloudClient     – cloud API transport + get_bridges()
-    └── TedeeClient          – combined local-first / cloud-fallback (backward compat)
+    TedeeClientBase          - shared state, properties, business logic
+    ├── TedeeLocalClient     - local bridge API transport + webhook management
+    ├── TedeeCloudClient     - cloud API transport + get_bridges()
+    └── TedeeClient          - combined local-first / cloud-fallback (backward compat)
          (TedeeLocalClient, TedeeCloudClient)
 """
 
@@ -15,17 +15,15 @@ import asyncio
 import hashlib
 import logging
 import time
+from collections.abc import abstractmethod
 from http import HTTPMethod
 from typing import Any, ValuesView
 
-import aiohttp
+from aiohttp import ClientSession
 
 from .const import (
     API_LOCAL_PORT,
     API_LOCAL_VERSION,
-    API_PATH_LOCK,
-    API_PATH_PULL,
-    API_PATH_UNLOCK,
     API_URL_BRIDGE,
     API_URL_LOCK,
     API_URL_SYNC,
@@ -67,13 +65,13 @@ class TedeeClientBase:
         *,
         timeout: int = TIMEOUT,
         bridge_id: int | None = None,
-        session: aiohttp.ClientSession | None = None,
+        session: ClientSession | None = None,
         **_kwargs: Any,
     ) -> None:
         self._timeout = timeout
         self._bridge_id = bridge_id
         self._locks: dict[int, TedeeLock] = {}
-        self._session = session or aiohttp.ClientSession()
+        self._session = session or ClientSession()
         # Default: no cloud credentials (overridden by TedeeCloudClient).
         self._personal_token: str | None = None
 
@@ -118,9 +116,7 @@ class TedeeClientBase:
             lock = self._locks.get(lock_id)
             if lock is None:
                 continue
-            lock.update_from_api_response(
-                lock_json, include_settings=is_local
-            )
+            lock.update_from_api_response(lock_json, include_settings=is_local)
 
         _LOGGER.debug("Locks synced successfully")
 
@@ -129,22 +125,14 @@ class TedeeClientBase:
     async def unlock(self, lock_id: int) -> None:
         """Unlock a lock."""
         _LOGGER.debug("Unlock lock %s...", lock_id)
-        await self._execute_lock_operation(
-            lock_id,
-            local_path=f"/lock/{lock_id}/unlock?mode=3",
-            cloud_path=f"{API_PATH_UNLOCK}?mode=3",
-        )
+        await self._execute_lock_operation(lock_id, "unlock?mode=3")
         _LOGGER.debug("Unlock command successful, id: %s", lock_id)
         await asyncio.sleep(UNLOCK_DELAY)
 
     async def lock(self, lock_id: int) -> None:
         """Lock a lock."""
         _LOGGER.debug("Lock lock %s...", lock_id)
-        await self._execute_lock_operation(
-            lock_id,
-            local_path=f"/lock/{lock_id}/lock",
-            cloud_path=API_PATH_LOCK,
-        )
+        await self._execute_lock_operation(lock_id, "lock")
         _LOGGER.debug("Lock command successful, id: %s", lock_id)
         await asyncio.sleep(LOCK_DELAY)
 
@@ -152,11 +140,7 @@ class TedeeClientBase:
         """Unlock and pull the door latch."""
         delay = self._locks[lock_id].duration_pullspring + 1
         _LOGGER.debug("Open lock %s...", lock_id)
-        await self._execute_lock_operation(
-            lock_id,
-            local_path=f"/lock/{lock_id}/unlock?mode=4",
-            cloud_path=f"{API_PATH_UNLOCK}?mode=4",
-        )
+        await self._execute_lock_operation(lock_id, "unlock?mode=4")
         _LOGGER.debug("Open command successful, id: %s", lock_id)
         await asyncio.sleep(delay)
 
@@ -164,11 +148,7 @@ class TedeeClientBase:
         """Pull the door latch only."""
         delay = self._locks[lock_id].duration_pullspring + 1
         _LOGGER.debug("Pull lock %s...", lock_id)
-        await self._execute_lock_operation(
-            lock_id,
-            local_path=f"/lock/{lock_id}/pull",
-            cloud_path=API_PATH_PULL,
-        )
+        await self._execute_lock_operation(lock_id, "pull")
         _LOGGER.debug("Pull command successful, id: %s", lock_id)
         await asyncio.sleep(delay)
 
@@ -219,23 +199,21 @@ class TedeeClientBase:
 
     # -- Abstract transport methods (subclasses must implement) ----------------
 
+    @abstractmethod
     async def _fetch_locks(self) -> list[dict]:
         """Fetch raw lock data from the API."""
-        raise NotImplementedError
 
+    @abstractmethod
     async def _fetch_sync(self) -> tuple[list[dict], bool]:
         """Fetch sync data. Returns ``(data, is_local)``."""
-        raise NotImplementedError
 
+    @abstractmethod
     async def _execute_lock_operation(
         self,
         lock_id: int,
-        *,
-        local_path: str,
-        cloud_path: str,
+        action: str,
     ) -> None:
         """Execute a single lock command (unlock/lock/open/pull)."""
-        raise NotImplementedError
 
 
 # =============================================================================
@@ -285,11 +263,10 @@ class TedeeLocalClient(TedeeClientBase):
     async def _execute_lock_operation(
         self,
         lock_id: int,
-        *,
-        local_path: str,
-        cloud_path: str,
+        action: str,
     ) -> None:
-        success, _ = await self._local_api_call(local_path, HTTPMethod.POST)
+        path = f"/lock/{lock_id}/{action}"
+        success, _ = await self._local_api_call(path, HTTPMethod.POST)
         if not success:
             raise TedeeClientException(
                 f"Local lock operation failed for lock {lock_id}"
@@ -345,9 +322,7 @@ class TedeeLocalClient(TedeeClientBase):
         """Get all registered webhooks."""
         _LOGGER.debug("Getting webhooks...")
         try:
-            success, result = await self._local_api_call(
-                "/callback", HTTPMethod.GET
-            )
+            success, result = await self._local_api_call("/callback", HTTPMethod.GET)
         except TedeeDataUpdateException as ex:
             raise TedeeWebhookException("Unable to get webhooks") from ex
         if not success or result is None:
@@ -368,9 +343,7 @@ class TedeeLocalClient(TedeeClientBase):
         """Delete a specific webhook."""
         _LOGGER.debug("Deleting webhook %s", webhook_id)
         try:
-            await self._local_api_call(
-                f"/callback/{webhook_id}", HTTPMethod.DELETE
-            )
+            await self._local_api_call(f"/callback/{webhook_id}", HTTPMethod.DELETE)
         except TedeeDataUpdateException as ex:
             _LOGGER.debug("Unable to delete webhook: %s", ex)
         _LOGGER.debug("Webhook deleted successfully.")
@@ -379,9 +352,7 @@ class TedeeLocalClient(TedeeClientBase):
         """Delete all webhooks whose URL contains *host*."""
         _LOGGER.debug("Deleting webhooks for host %s", host)
         try:
-            success, result = await self._local_api_call(
-                "/callback", HTTPMethod.GET
-            )
+            success, result = await self._local_api_call("/callback", HTTPMethod.GET)
         except TedeeDataUpdateException as ex:
             _LOGGER.debug("Unable to get webhooks: %s", ex)
             return
@@ -499,11 +470,9 @@ class TedeeCloudClient(TedeeClientBase):
     async def _execute_lock_operation(
         self,
         lock_id: int,
-        *,
-        local_path: str,
-        cloud_path: str,
+        action: str,
     ) -> None:
-        url = f"{API_URL_LOCK}{lock_id}{cloud_path}"
+        url = f"{API_URL_LOCK}{lock_id}/operation/{action}"
         await http_request(
             url,
             HTTPMethod.POST,
@@ -549,7 +518,7 @@ class TedeeClient(TedeeLocalClient, TedeeCloudClient):
         local_ip: str | None = None,
         timeout: int = TIMEOUT,
         bridge_id: int | None = None,
-        session: aiohttp.ClientSession | None = None,
+        session: ClientSession | None = None,
         api_token_mode_plain: bool = False,
     ) -> None:
         """Initialize the Tedee client.
@@ -592,9 +561,7 @@ class TedeeClient(TedeeLocalClient, TedeeCloudClient):
 
     async def _fetch_locks(self) -> list[dict]:
         if self._use_local_api:
-            success, result = await self._local_api_call(
-                "/lock", HTTPMethod.GET
-            )
+            success, result = await self._local_api_call("/lock", HTTPMethod.GET)
             if success and result is not None:
                 return result
 
@@ -609,9 +576,7 @@ class TedeeClient(TedeeLocalClient, TedeeCloudClient):
 
     async def _fetch_sync(self) -> tuple[list[dict], bool]:
         if self._use_local_api:
-            success, result = await self._local_api_call(
-                "/lock", HTTPMethod.GET
-            )
+            success, result = await self._local_api_call("/lock", HTTPMethod.GET)
             if success and result is not None:
                 return result, True
 
@@ -628,18 +593,15 @@ class TedeeClient(TedeeLocalClient, TedeeCloudClient):
     async def _execute_lock_operation(
         self,
         lock_id: int,
-        *,
-        local_path: str,
-        cloud_path: str,
+        action: str,
     ) -> None:
         if self._use_local_api:
-            success, _ = await self._local_api_call(
-                local_path, HTTPMethod.POST
-            )
+            path = f"/lock/{lock_id}/{action}"
+            success, _ = await self._local_api_call(path, HTTPMethod.POST)
             if success:
                 return
 
-        url = f"{API_URL_LOCK}{lock_id}{cloud_path}"
+        url = f"{API_URL_LOCK}{lock_id}/operation/{action}"
         await http_request(
             url,
             HTTPMethod.POST,

@@ -4,15 +4,19 @@ import asyncio
 from http import HTTPStatus
 from typing import Any, Mapping
 
-import aiohttp
+from aiohttp import ClientError, ClientSession, ServerConnectionError
 
 from .const import API_URL_DEVICE, TIMEOUT
-from .exceptions import TedeeAuthException, TedeeClientException, TedeeRateLimitException
+from .exceptions import (
+    TedeeAuthException,
+    TedeeClientException,
+    TedeeRateLimitException,
+)
 
 
 async def is_personal_key_valid(
     personal_key: str,
-    session: aiohttp.ClientSession,
+    session: ClientSession,
     timeout: int = TIMEOUT,
 ) -> bool:
     """Check if personal key is valid."""
@@ -26,7 +30,7 @@ async def is_personal_key_valid(
             },
             timeout=timeout,
         )
-    except (aiohttp.ClientError, aiohttp.ServerConnectionError, TimeoutError):
+    except (ClientError, ServerConnectionError, TimeoutError):
         return False
 
     await asyncio.sleep(0.1)
@@ -44,7 +48,7 @@ async def http_request(
     url: str,
     http_method: str,
     headers: Mapping[str, str] | None,
-    session: aiohttp.ClientSession,
+    session: ClientSession,
     timeout: int = TIMEOUT,
     json_data: Any = None,
 ) -> Any:
@@ -59,8 +63,8 @@ async def http_request(
             timeout=timeout,
         )
     except (
-        aiohttp.ServerConnectionError,
-        aiohttp.ClientError,
+        ServerConnectionError,
+        ClientError,
         TimeoutError,
     ) as exc:
         raise TedeeClientException(f"Error during http call: {exc}") from exc

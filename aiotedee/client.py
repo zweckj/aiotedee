@@ -287,7 +287,7 @@ class TedeeLocalClient(TedeeClientBase):
         lock_id: int,
         *,
         local_path: str,
-        cloud_path: str = "",
+        cloud_path: str,
     ) -> None:
         success, _ = await self._local_api_call(local_path, HTTPMethod.POST)
         if not success:
@@ -467,7 +467,7 @@ class TedeeCloudClient(TedeeClientBase):
 
     def __init__(self, *, personal_token: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._personal_token: str | None = personal_token
+        self._personal_token = personal_token
         self._cloud_headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Authorization": f"PersonalKey {personal_token}",
@@ -500,7 +500,7 @@ class TedeeCloudClient(TedeeClientBase):
         self,
         lock_id: int,
         *,
-        local_path: str = "",
+        local_path: str,
         cloud_path: str,
     ) -> None:
         url = f"{API_URL_LOCK}{lock_id}{cloud_path}"

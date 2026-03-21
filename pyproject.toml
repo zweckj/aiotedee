@@ -1,6 +1,6 @@
 [project]
 name = "aiotedee"
-version = "0.2.25"
+version = "0.2.26"
 license = "MIT"
 description = "A package to interact with Tedee locks using asyncio"
 readme = "README.md"
@@ -16,7 +16,6 @@ classifiers = [
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
     "Natural Language :: English",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.12",
 ]

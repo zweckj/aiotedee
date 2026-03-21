@@ -7,7 +7,7 @@ from typing import Any, Mapping
 import aiohttp
 
 from .const import API_URL_DEVICE, TIMEOUT
-from .exception import TedeeAuthException, TedeeClientException, TedeeRateLimitException
+from .exceptions import TedeeAuthException, TedeeClientException, TedeeRateLimitException
 
 
 async def is_personal_key_valid(

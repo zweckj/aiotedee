@@ -11,7 +11,6 @@ from typing import Any, ValuesView
 
 import aiohttp
 
-from .bridge import TedeeBridge
 from .const import (
     API_LOCAL_PORT,
     API_LOCAL_VERSION,
@@ -26,7 +25,7 @@ from .const import (
     TIMEOUT,
     UNLOCK_DELAY,
 )
-from .exception import (
+from .exceptions import (
     TedeeAuthException,
     TedeeClientException,
     TedeeDataUpdateException,
@@ -35,13 +34,8 @@ from .exception import (
     TedeeWebhookException,
 )
 from .helpers import http_request
-from .lock import (
-    TedeeDoorState,
-    TedeeLock,
-    TedeeLockState,
-    _safe_door_state,
-    _safe_lock_state,
-)
+from .models import TedeeBridge, TedeeLock, TedeeLockState
+from .webhook import WEBHOOK_HANDLERS, _noop
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -254,7 +248,7 @@ class TedeeClient:
         if lock is None:
             return
 
-        _WEBHOOK_HANDLERS.get(event, _noop)(lock, data)
+        WEBHOOK_HANDLERS.get(event, _noop)(lock, data)
         self._locks[lock_id] = lock
 
     async def update_webhooks(
@@ -464,48 +458,3 @@ class TedeeClient:
             raw = f"{self._local_token}{ms}"
             token = hashlib.sha256(raw.encode()).hexdigest() + str(ms)
         return {"Content-Type": "application/json", "api_token": token}
-
-
-# -- Webhook event handlers ---------------------------------------------------
-
-
-def _handle_connection_changed(lock: TedeeLock, data: dict) -> None:
-    lock.is_connected = data.get("isConnected", 0) == 1
-
-
-def _handle_lock_status_changed(lock: TedeeLock, data: dict) -> None:
-    lock.state = _safe_lock_state(data.get("state", 0))
-    lock.state_change_result = data.get("jammed", 0)
-    lock.door_state = _safe_door_state(data.get("doorState", 0))
-
-
-def _handle_battery_level_changed(lock: TedeeLock, data: dict) -> None:
-    lock.battery_level = data.get("batteryLevel")
-
-
-def _handle_battery_start_charging(lock: TedeeLock, _data: dict) -> None:
-    lock.is_charging = True
-
-
-def _handle_battery_stop_charging(lock: TedeeLock, _data: dict) -> None:
-    lock.is_charging = False
-
-
-def _handle_battery_fully_charged(lock: TedeeLock, _data: dict) -> None:
-    lock.is_charging = False
-    lock.battery_level = 100
-
-
-def _noop(_lock: TedeeLock, _data: dict) -> None:
-    pass
-
-
-_WEBHOOK_HANDLERS: dict[str, Any] = {
-    "device-connection-changed": _handle_connection_changed,
-    "lock-status-changed": _handle_lock_status_changed,
-    "device-battery-level-changed": _handle_battery_level_changed,
-    "device-battery-start-charging": _handle_battery_start_charging,
-    "device-battery-stop-charging": _handle_battery_stop_charging,
-    "device-battery-fully-charged": _handle_battery_fully_charged,
-    "device-settings-changed": _noop,
-}

@@ -1,4 +1,4 @@
-"""Tedee Lock models."""
+"""Data models for aiotedee."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from mashumaro.mixins.dict import DataClassDictMixin
+
+
+# -- Enums ---------------------------------------------------------------------
 
 
 class TedeeLockState(IntEnum):
@@ -35,12 +38,68 @@ class TedeeDoorState(IntEnum):
     UNCALIBRATED = 4
 
 
+# -- Helpers -------------------------------------------------------------------
+
 _LOCK_TYPE_NAMES: dict[int, str] = {
     2: "Tedee PRO",
     4: "Tedee GO",
 }
 
 DEFAULT_PULLSPRING_DURATION = 5
+
+
+def _safe_lock_state(value: int) -> TedeeLockState:
+    """Convert an int to TedeeLockState, falling back to UNKNOWN."""
+    try:
+        return TedeeLockState(value)
+    except ValueError:
+        return TedeeLockState.UNKNOWN
+
+
+def _safe_door_state(value: int) -> TedeeDoorState:
+    """Convert an int to TedeeDoorState, falling back to NOT_PAIRED."""
+    try:
+        return TedeeDoorState(value)
+    except ValueError:
+        return TedeeDoorState.NOT_PAIRED
+
+
+def _parse_lock_properties(
+    data: dict,
+) -> tuple[TedeeLockState, int | None, bool, int, TedeeDoorState]:
+    """Extract lock state properties from an API response.
+
+    The cloud API nests values under ``lockProperties`` while the local API
+    places them at the top level.
+    """
+    lock_props = data.get("lockProperties")
+    source = lock_props if lock_props is not None else data
+
+    state = _safe_lock_state(source.get("state", TedeeLockState.UNKNOWN))
+    battery_level: int | None = source.get("batteryLevel")
+    is_charging = bool(source.get("isCharging", False))
+    door_state = _safe_door_state(source.get("doorState", TedeeDoorState.NOT_PAIRED))
+
+    # The cloud API uses ``stateChangeResult`` while the local API uses ``jammed``.
+    if lock_props is not None:
+        state_change_result: int = source.get("stateChangeResult", 0)
+    else:
+        state_change_result = source.get("jammed", 0)
+
+    return state, battery_level, is_charging, state_change_result, door_state
+
+
+def _parse_pull_spring_settings(data: dict) -> tuple[bool, bool, int]:
+    """Extract pull-spring settings from an API response."""
+    device_settings: dict = data.get("deviceSettings", {})
+    return (
+        bool(device_settings.get("pullSpringEnabled", False)),
+        bool(device_settings.get("autoPullSpringEnabled", False)),
+        device_settings.get("pullSpringDuration", DEFAULT_PULLSPRING_DURATION),
+    )
+
+
+# -- Models --------------------------------------------------------------------
 
 
 @dataclass
@@ -122,52 +181,19 @@ class TedeeLock(DataClassDictMixin):
             ) = _parse_pull_spring_settings(data)
 
 
-def _safe_lock_state(value: int) -> TedeeLockState:
-    """Convert an int to TedeeLockState, falling back to UNKNOWN."""
-    try:
-        return TedeeLockState(value)
-    except ValueError:
-        return TedeeLockState.UNKNOWN
+@dataclass
+class TedeeBridge(DataClassDictMixin):
+    """Tedee Bridge."""
 
+    id: int
+    serial: str
+    name: str
 
-def _safe_door_state(value: int) -> TedeeDoorState:
-    """Convert an int to TedeeDoorState, falling back to NOT_PAIRED."""
-    try:
-        return TedeeDoorState(value)
-    except ValueError:
-        return TedeeDoorState.NOT_PAIRED
-
-
-def _parse_lock_properties(
-    data: dict,
-) -> tuple[TedeeLockState, int | None, bool, int, TedeeDoorState]:
-    """Extract lock state properties from an API response.
-
-    The cloud API nests values under ``lockProperties`` while the local API
-    places them at the top level.
-    """
-    lock_props = data.get("lockProperties")
-    source = lock_props if lock_props is not None else data
-
-    state = _safe_lock_state(source.get("state", TedeeLockState.UNKNOWN))
-    battery_level: int | None = source.get("batteryLevel")
-    is_charging = bool(source.get("isCharging", False))
-    door_state = _safe_door_state(source.get("doorState", TedeeDoorState.NOT_PAIRED))
-
-    # The cloud API uses ``stateChangeResult`` while the local API uses ``jammed``.
-    if lock_props is not None:
-        state_change_result: int = source.get("stateChangeResult", 0)
-    else:
-        state_change_result = source.get("jammed", 0)
-
-    return state, battery_level, is_charging, state_change_result, door_state
-
-
-def _parse_pull_spring_settings(data: dict) -> tuple[bool, bool, int]:
-    """Extract pull-spring settings from an API response."""
-    device_settings: dict = data.get("deviceSettings", {})
-    return (
-        bool(device_settings.get("pullSpringEnabled", False)),
-        bool(device_settings.get("autoPullSpringEnabled", False)),
-        device_settings.get("pullSpringDuration", DEFAULT_PULLSPRING_DURATION),
-    )
+    @classmethod
+    def from_api_response(cls, data: dict) -> TedeeBridge:
+        """Create a TedeeBridge from an API response dict."""
+        return cls(
+            id=data.get("id", 0),
+            serial=data["serialNumber"],
+            name=data["name"],
+        )

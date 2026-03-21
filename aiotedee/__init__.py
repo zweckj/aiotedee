@@ -1,7 +1,7 @@
 """aiotedee – async Python client for Tedee smart locks."""
 
-from .bridge import TedeeBridge
-from .exception import (
+from .client import TedeeClient
+from .exceptions import (
     TedeeAuthException,
     TedeeClientException,
     TedeeDataUpdateException,
@@ -9,8 +9,7 @@ from .exception import (
     TedeeRateLimitException,
     TedeeWebhookException,
 )
-from .lock import TedeeDoorState, TedeeLock, TedeeLockState
-from .tedee_client import TedeeClient
+from .models import TedeeBridge, TedeeDoorState, TedeeLock, TedeeLockState
 
 __all__ = [
     "TedeeBridge",

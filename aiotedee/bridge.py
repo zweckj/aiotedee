@@ -1,25 +1,25 @@
-""" Class describing a tedee bridge. """
+"""Tedee Bridge model."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from mashumaro.mixins.dict import DataClassDictMixin
 
 
-class TedeeBridge:
-    """Dataclass for tedee bridge."""
+@dataclass
+class TedeeBridge(DataClassDictMixin):
+    """Tedee Bridge."""
 
-    def __init__(self, bridge_id: int, serial: str, name: str):
-        self._bridge_id = bridge_id
-        self._serial = serial
-        self._name = name
+    id: int
+    serial: str
+    name: str
 
-    @property
-    def bridge_id(self) -> int:
-        """Return bridge id."""
-        return self._bridge_id
-
-    @property
-    def serial(self) -> str:
-        """Return bridge serial."""
-        return self._serial
-
-    @property
-    def name(self) -> str:
-        """Return bridge name."""
-        return self._name
+    @classmethod
+    def from_api_response(cls, data: dict) -> TedeeBridge:
+        """Create a TedeeBridge from an API response dict."""
+        return cls(
+            id=data.get("id", 0),
+            serial=data["serialNumber"],
+            name=data["name"],
+        )

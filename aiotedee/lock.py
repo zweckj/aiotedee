@@ -1,6 +1,11 @@
-"""Tedee Lock Object."""
+"""Tedee Lock models."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 from enum import IntEnum
+
+from mashumaro.mixins.dict import DataClassDictMixin
 
 
 class TedeeLockState(IntEnum):
@@ -30,167 +35,123 @@ class TedeeDoorState(IntEnum):
     UNCALIBRATED = 4
 
 
-class TedeeLock:
+_LOCK_TYPE_NAMES: dict[int, str] = {
+    2: "Tedee PRO",
+    4: "Tedee GO",
+}
+
+DEFAULT_PULLSPRING_DURATION = 5
+
+
+@dataclass
+class TedeeLock(DataClassDictMixin):
     """Tedee Lock."""
 
-    def __init__(
-        self,
-        lock_name: str,
-        lock_id: int,
-        lock_type: int,
-        state: int = 0,
-        battery_level: int | None = None,
-        is_connected: bool = False,
-        is_charging: bool = False,
-        state_change_result: int = 0,
-        is_enabled_pullspring: bool = False,
-        is_enabled_auto_pullspring: bool = False,
-        duration_pullspring: int = 0,
-        door_state: int = 0,
-    ) -> None:
-        """Initialize a new lock."""
-        self._lock_name = lock_name
-        self._lock_id = lock_id
-        self._lock_type = lock_type
-        self._state = state
-        self._battery_level = battery_level
-        self._is_connected = is_connected
-        self._is_charging = is_charging
-        self._state_change_result = state_change_result
-        self._duration_pullspring = duration_pullspring
-        self._is_enabled_pullspring = is_enabled_pullspring
-        self._is_enabled_auto_pullspring = is_enabled_auto_pullspring
-        self._door_state = door_state
+    name: str
+    id: int
+    type: int
+    state: TedeeLockState = TedeeLockState.UNCALIBRATED
+    battery_level: int | None = None
+    is_connected: bool = False
+    is_charging: bool = False
+    state_change_result: int = 0
+    is_enabled_pullspring: bool = False
+    is_enabled_auto_pullspring: bool = False
+    duration_pullspring: int = DEFAULT_PULLSPRING_DURATION
+    door_state: TedeeDoorState = TedeeDoorState.NOT_PAIRED
 
     @property
-    def lock_name(self) -> str:
-        """Return the name of the lock."""
-        return self._lock_name
+    def type_name(self) -> str:
+        """Return the human-readable type of the lock."""
+        return _LOCK_TYPE_NAMES.get(self.type, "Unknown Model")
 
     @property
-    def lock_id(self) -> int:
-        """Return the id of the lock."""
-        return self._lock_id
-
-    @property
-    def lock_type(self) -> str:
-        """Return the type of the lock."""
-        if self._lock_type == 2:
-            return "Tedee PRO"
-        elif self._lock_type == 4:
-            return "Tedee GO"
-        else:
-            return "Unknown Model"
-
-    @property
-    def is_state_locked(self) -> bool:
+    def is_locked(self) -> bool:
         """Return true if the lock is locked."""
-        return self._state == TedeeLockState.LOCKED
+        return self.state == TedeeLockState.LOCKED
 
     @property
-    def is_state_unlocked(self) -> bool:
+    def is_unlocked(self) -> bool:
         """Return true if the lock is unlocked."""
-        return self._state == TedeeLockState.UNLOCKED
+        return self.state == TedeeLockState.UNLOCKED
 
     @property
-    def is_state_jammed(self) -> bool:
+    def is_jammed(self) -> bool:
         """Return true if the lock is jammed."""
-        return self._state_change_result == 1
+        return self.state_change_result == 1
 
-    @property
-    def state(self) -> TedeeLockState:
-        """Return the state of the lock."""
-        return TedeeLockState(self._state)
+    @classmethod
+    def from_api_response(cls, data: dict) -> TedeeLock:
+        """Create a TedeeLock from an API response dict (cloud or local)."""
+        state, battery, charging, change_result, door = _parse_lock_properties(data)
+        pullspring, auto_pull, duration = _parse_pull_spring_settings(data)
 
-    @state.setter
-    def state(self, status: int):
-        self._state = status
+        return cls(
+            name=data["name"],
+            id=data["id"],
+            type=data.get("type", 0),
+            state=state,
+            battery_level=battery,
+            is_connected=bool(data.get("isConnected", False)),
+            is_charging=charging,
+            state_change_result=change_result,
+            is_enabled_pullspring=pullspring,
+            is_enabled_auto_pullspring=auto_pull,
+            duration_pullspring=duration,
+            door_state=door,
+        )
 
-    @property
-    def door_state(self) -> TedeeDoorState:
-        """Return the state of the door."""
-        return TedeeDoorState(self._door_state)
+    def update_from_api_response(
+        self, data: dict, *, include_settings: bool = False
+    ) -> None:
+        """Update this lock in-place from an API response dict."""
+        state, battery, charging, change_result, door = _parse_lock_properties(data)
 
-    @door_state.setter
-    def door_state(self, state: int):
-        self._door_state = state
+        self.is_connected = bool(data.get("isConnected", False))
+        self.state = state
+        self.battery_level = battery
+        self.is_charging = charging
+        self.state_change_result = change_result
+        self.door_state = door
 
-    @property
-    def state_change_result(self) -> int:
-        """Return the state change result of the lock."""
-        return self._state_change_result
+        if include_settings:
+            (
+                self.is_enabled_pullspring,
+                self.is_enabled_auto_pullspring,
+                self.duration_pullspring,
+            ) = _parse_pull_spring_settings(data)
 
-    @state_change_result.setter
-    def state_change_result(self, result: int):
-        self._state_change_result = result
 
-    @property
-    def battery_level(self) -> int | None:
-        """Return the battery level of the lock."""
-        return self._battery_level
+def _parse_lock_properties(
+    data: dict,
+) -> tuple[TedeeLockState, int | None, bool, int, TedeeDoorState]:
+    """Extract lock state properties from an API response.
 
-    @battery_level.setter
-    def battery_level(self, level):
-        self._battery_level = level
+    The cloud API nests values under ``lockProperties`` while the local API
+    places them at the top level.
+    """
+    lock_props = data.get("lockProperties")
+    source = lock_props if lock_props is not None else data
 
-    @property
-    def is_connected(self) -> bool:
-        """Return true if the lock is connected."""
-        return self._is_connected
+    state = TedeeLockState(source.get("state", TedeeLockState.UNKNOWN))
+    battery_level: int | None = source.get("batteryLevel")
+    is_charging = bool(source.get("isCharging", False))
+    door_state = TedeeDoorState(source.get("doorState", TedeeDoorState.NOT_PAIRED))
 
-    @is_connected.setter
-    def is_connected(self, connected):
-        self._is_connected = connected
+    # The cloud API uses ``stateChangeResult`` while the local API uses ``jammed``.
+    if lock_props is not None:
+        state_change_result: int = source.get("stateChangeResult", 0)
+    else:
+        state_change_result = source.get("jammed", 0)
 
-    @property
-    def is_charging(self) -> bool:
-        """Return true if the lock is charging."""
-        return self._is_charging
+    return state, battery_level, is_charging, state_change_result, door_state
 
-    @is_charging.setter
-    def is_charging(self, value: bool):
-        self._is_charging = value
 
-    @property
-    def is_enabled_pullspring(self) -> bool:
-        """Return true if the lock is charging."""
-        return bool(self._is_enabled_pullspring)
-
-    @is_enabled_pullspring.setter
-    def is_enabled_pullspring(self, value: bool):
-        self._is_enabled_pullspring = value
-
-    @property
-    def is_enabled_auto_pullspring(self) -> bool:
-        """Return true if the lock is charging."""
-        return bool(self._is_enabled_auto_pullspring)
-
-    @is_enabled_auto_pullspring.setter
-    def is_enabled_auto_pullspring(self, value: bool):
-        self._is_enabled_auto_pullspring = value
-
-    @property
-    def duration_pullspring(self) -> int:
-        """Return the duration of the pullspring."""
-        return self._duration_pullspring
-
-    @duration_pullspring.setter
-    def duration_pullspring(self, duration: int):
-        self._duration_pullspring = duration
-
-    def to_dict(self) -> dict[str, str | int | bool | None]:
-        """Return a dict representation of the lock."""
-        return {
-            "lock_name": self._lock_name,
-            "lock_id": self._lock_id,
-            "lock_type": self._lock_type,
-            "state": self._state,
-            "battery_level": self._battery_level,
-            "is_connected": self._is_connected,
-            "is_charging": self._is_charging,
-            "state_change_result": self._state_change_result,
-            "is_enabled_pullspring": self._is_enabled_pullspring,
-            "is_enabled_auto_pullspring": self._is_enabled_auto_pullspring,
-            "duration_pullspring": self._duration_pullspring,
-            "door_state": self._door_state,
-        }
+def _parse_pull_spring_settings(data: dict) -> tuple[bool, bool, int]:
+    """Extract pull-spring settings from an API response."""
+    device_settings: dict = data.get("deviceSettings", {})
+    return (
+        bool(device_settings.get("pullSpringEnabled", False)),
+        bool(device_settings.get("autoPullSpringEnabled", False)),
+        device_settings.get("pullSpringDuration", DEFAULT_PULLSPRING_DURATION),
+    )

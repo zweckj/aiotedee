@@ -22,6 +22,7 @@ from .const import (
     API_URL_LOCK,
     API_URL_SYNC,
     LOCK_DELAY,
+    NUM_RETRIES,
     TIMEOUT,
     UNLOCK_DELAY,
 )
@@ -34,9 +35,8 @@ from .exception import (
     TedeeWebhookException,
 )
 from .helpers import http_request
-from .lock import TedeeLock, TedeeLockState
+from .lock import TedeeDoorState, TedeeLock, TedeeLockState
 
-NUM_RETRIES = 3
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -52,35 +52,38 @@ class TedeeClient:
         bridge_id: int | None = None,
         session: aiohttp.ClientSession | None = None,
         api_token_mode_plain: bool = False,
-    ):
-        """Constructor"""
-        self._available = False
+    ) -> None:
+        """Initialize the Tedee client.
+
+        Args:
+            personal_token: Cloud API personal token.
+            local_token: Local bridge API token.
+            local_ip: Local bridge IP address.
+            timeout: HTTP request timeout in seconds.
+            bridge_id: Filter locks to a specific bridge.
+            session: Optional shared aiohttp session.
+            api_token_mode_plain: Use plain (unsecured) local API token.
+        """
         self._personal_token = personal_token
-        self._locks_dict: dict[int, TedeeLock] = {}
         self._local_token = local_token
         self._local_ip = local_ip
         self._timeout = timeout
         self._bridge_id = bridge_id
         self._api_token_mode_plain = api_token_mode_plain
 
+        self._locks: dict[int, TedeeLock] = {}
         self._use_local_api: bool = bool(local_token and local_ip)
-        self._last_local_call: float | None = None
+        self._session = session or aiohttp.ClientSession()
 
-        if session is None:
-            self._session = aiohttp.ClientSession()
-        else:
-            self._session = session
-
-        _LOGGER.debug("Using local API: %s", str(self._use_local_api))
-
-        # Create the api header with new token"
-        self._api_header: dict[str, str] = {
+        self._cloud_headers: dict[str, str] = {
             "Content-Type": "application/json",
-            "Authorization": "PersonalKey " + str(self._personal_token),
+            "Authorization": f"PersonalKey {self._personal_token}",
         }
-        self._local_api_path: str = (
+        self._local_api_base: str = (
             f"http://{local_ip}:{API_LOCAL_PORT}/{API_LOCAL_VERSION}"
         )
+
+        _LOGGER.debug("Using local API: %s", self._use_local_api)
 
     @classmethod
     async def create(
@@ -89,409 +92,180 @@ class TedeeClient:
         local_token: str | None = None,
         local_ip: str | None = None,
         bridge_id: int | None = None,
-        timeout=TIMEOUT,
+        timeout: int = TIMEOUT,
     ) -> TedeeClient:
-        """Create a new instance of the TedeeClient, which is initialized."""
-        self = cls(personal_token, local_token, local_ip, timeout, bridge_id)
-        await self.get_locks()
-        return self
+        """Create and initialize a TedeeClient with locks already fetched."""
+        client = cls(personal_token, local_token, local_ip, timeout, bridge_id)
+        await client.get_locks()
+        return client
+
+    # -- Public properties -----------------------------------------------------
 
     @property
-    def locks(self) -> ValuesView:
-        """Return a list of locks"""
-        return self._locks_dict.values()
+    def locks(self) -> ValuesView[TedeeLock]:
+        """Return all locks."""
+        return self._locks.values()
 
     @property
     def locks_dict(self) -> dict[int, TedeeLock]:
-        """Return all locks."""
-        return self._locks_dict
+        """Return locks keyed by ID."""
+        return self._locks
+
+    # -- Lock retrieval & sync -------------------------------------------------
 
     async def get_locks(self) -> None:
-        """Get the list of registered locks"""
-        local_call_success, result = await self._local_api_call("/lock", HTTPMethod.GET)
-        if not local_call_success:
-            r = await http_request(
-                API_URL_LOCK,
-                HTTPMethod.GET,
-                self._api_header,
-                self._session,
-                self._timeout,
-            )
-            result = r["result"]
-        _LOGGER.debug("Locks %s", result)
-
+        """Fetch and store all registered locks."""
+        result, _ = await self._api_call(
+            local_path="/lock",
+            cloud_url=API_URL_LOCK,
+            http_method=HTTPMethod.GET,
+        )
         if result is None:
-            raise TedeeClientException('No data returned in "result" from get_locks')
+            raise TedeeClientException("No data returned from get_locks")
 
-        for lock_json in result:
-            if self._bridge_id:
-                # if bridge id is set, only get locks for that bridge
-                connected_to_id: int | None = lock_json.get("connectedToId")
-                if connected_to_id is not None and connected_to_id != self._bridge_id:
-                    continue
+        for lock_json in self._filter_by_bridge(result):
+            lock = TedeeLock.from_api_response(lock_json)
+            self._locks[lock.id] = lock
 
-            lock_id = lock_json["id"]
-            lock_name = lock_json["name"]
-            lock_type = lock_json["type"]
-
-            (
-                is_connected,
-                state,
-                battery_level,
-                is_charging,
-                state_change_result,
-                door_state
-            ) = self.parse_lock_properties(lock_json)
-            (
-                is_enabled_pullspring,
-                is_enabled_auto_pullspring,
-                duration_pullspring,
-            ) = self.parse_pull_spring_settings(lock_json)
-
-            lock = TedeeLock(
-                lock_name,
-                lock_id,
-                lock_type,
-                state,
-                battery_level,
-                is_connected,
-                is_charging,
-                state_change_result,
-                is_enabled_pullspring,
-                is_enabled_auto_pullspring,
-                duration_pullspring,
-                door_state,
-            )
-
-            self._locks_dict[lock_id] = lock
-
-        if not self._locks_dict:
+        if not self._locks:
             raise TedeeClientException("No lock found")
 
-        _LOGGER.debug("Locks retrieved successfully...")
+        _LOGGER.debug("Locks retrieved successfully")
 
     async def sync(self) -> None:
-        """Sync locks"""
+        """Synchronize lock states with the API."""
         _LOGGER.debug("Syncing locks")
-        local_call_success, result = await self._local_api_call("/lock", HTTPMethod.GET)
-        if not local_call_success:
-            r = await http_request(
-                API_URL_SYNC,
-                HTTPMethod.GET,
-                self._api_header,
-                self._session,
-                self._timeout,
-            )
-            result = r["result"]
-
+        result, is_local = await self._api_call(
+            local_path="/lock",
+            cloud_url=API_URL_SYNC,
+            http_method=HTTPMethod.GET,
+        )
         if result is None:
-            raise TedeeClientException('No data returned in "result" from sync')
+            raise TedeeClientException("No data returned from sync")
 
-        for lock_json in result:
-            if self._bridge_id:
-                # if bridge id is set, only get locks for that bridge
-                connected_to_id: int | None = lock_json.get("connectedToId")
-                if connected_to_id is not None and connected_to_id != self._bridge_id:
-                    continue
+        for lock_json in self._filter_by_bridge(result):
+            lock_id: int = lock_json["id"]
+            lock = self._locks.get(lock_id)
+            if lock is None:
+                continue
+            lock.update_from_api_response(
+                lock_json, include_settings=is_local
+            )
 
-            lock_id = lock_json["id"]
-
-            lock = self.locks_dict[lock_id]
-
-            (
-                lock.is_connected,
-                lock.state,
-                lock.battery_level,
-                lock.is_charging,
-                lock.state_change_result,
-                lock.door_state,
-            ) = self.parse_lock_properties(lock_json)
-
-            if local_call_success:
-                (
-                    lock.is_enabled_pullspring,
-                    lock.is_enabled_auto_pullspring,
-                    lock.duration_pullspring,
-                ) = self.parse_pull_spring_settings(lock_json)
-
-            self._locks_dict[lock_id] = lock
         _LOGGER.debug("Locks synced successfully")
 
+    # -- Lock operations -------------------------------------------------------
+
+    async def unlock(self, lock_id: int) -> None:
+        """Unlock a lock."""
+        await self._lock_operation(
+            lock_id,
+            local_path=f"/lock/{lock_id}/unlock?mode=3",
+            cloud_path=f"{API_PATH_UNLOCK}?mode=3",
+            name="Unlock",
+            delay=UNLOCK_DELAY,
+        )
+
+    async def lock(self, lock_id: int) -> None:
+        """Lock a lock."""
+        await self._lock_operation(
+            lock_id,
+            local_path=f"/lock/{lock_id}/lock",
+            cloud_path=API_PATH_LOCK,
+            name="Lock",
+            delay=LOCK_DELAY,
+        )
+
+    async def open(self, lock_id: int) -> None:
+        """Unlock and pull the door latch."""
+        delay = self._locks[lock_id].duration_pullspring + 1
+        await self._lock_operation(
+            lock_id,
+            local_path=f"/lock/{lock_id}/unlock?mode=4",
+            cloud_path=f"{API_PATH_UNLOCK}?mode=4",
+            name="Open",
+            delay=delay,
+        )
+
+    async def pull(self, lock_id: int) -> None:
+        """Pull the door latch only."""
+        delay = self._locks[lock_id].duration_pullspring + 1
+        await self._lock_operation(
+            lock_id,
+            local_path=f"/lock/{lock_id}/pull",
+            cloud_path=API_PATH_PULL,
+            name="Pull",
+            delay=delay,
+        )
+
+    def is_unlocked(self, lock_id: int) -> bool:
+        """Return whether a lock is unlocked."""
+        return self._locks[lock_id].state == TedeeLockState.UNLOCKED
+
+    def is_locked(self, lock_id: int) -> bool:
+        """Return whether a lock is locked."""
+        return self._locks[lock_id].state == TedeeLockState.LOCKED
+
+    # -- Bridge ----------------------------------------------------------------
+
     async def get_local_bridge(self) -> TedeeBridge:
-        """Get the local bridge"""
+        """Get bridge information from the local API."""
         if not self._use_local_api:
             raise TedeeClientException("Local API not configured.")
-        local_call_success, result = await self._local_api_call(
-            "/bridge", HTTPMethod.GET
-        )
-        if not local_call_success or not result:
+        success, result = await self._local_api_call("/bridge", HTTPMethod.GET)
+        if not success or not result:
             raise TedeeClientException("Unable to get local bridge")
-        bridge_serial = result["serialNumber"]
-        bridge_name = result["name"]
-        return TedeeBridge(0, bridge_serial, bridge_name)
+        return TedeeBridge.from_api_response(result)
 
     async def get_bridges(self) -> list[TedeeBridge]:
-        """List all bridges."""
+        """List all bridges from the cloud API."""
         _LOGGER.debug("Getting bridges...")
         r = await http_request(
             API_URL_BRIDGE,
             HTTPMethod.GET,
-            self._api_header,
+            self._cloud_headers,
             self._session,
             self._timeout,
         )
-        result = r["result"]
-        bridges = []
-        for bridge_json in result:
-            bridge_id = bridge_json["id"]
-            bridge_serial = bridge_json["serialNumber"]
-            bridge_name = bridge_json["name"]
-            bridge = TedeeBridge(
-                bridge_id,
-                bridge_serial,
-                bridge_name,
-            )
-            bridges.append(bridge)
-        _LOGGER.debug("Bridges retrieved successfully...")
+        bridges = [TedeeBridge.from_api_response(b) for b in r["result"]]
+        _LOGGER.debug("Bridges retrieved successfully")
         return bridges
 
-    async def unlock(self, lock_id: int) -> None:
-        """Unlock method"""
-        _LOGGER.debug("Unlocking lock %s...", str(lock_id))
-        local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/unlock?mode=3", HTTPMethod.POST
-        )
-        if not local_call_success:
-            url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=3"
-            await http_request(
-                url,
-                HTTPMethod.POST,
-                self._api_header,
-                self._session,
-                self._timeout,
-            )
-        _LOGGER.debug("unlock command successful, id: %d ", lock_id)
-        await asyncio.sleep(UNLOCK_DELAY)
-
-    async def lock(self, lock_id: int) -> None:
-        """'Lock method"""
-        _LOGGER.debug("Locking lock %s...", str(lock_id))
-        local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/lock", HTTPMethod.POST
-        )
-        if not local_call_success:
-            url = API_URL_LOCK + str(lock_id) + API_PATH_LOCK
-            await http_request(
-                url,
-                HTTPMethod.POST,
-                self._api_header,
-                self._session,
-                self._timeout,
-            )
-        _LOGGER.debug("lock command successful, id: %s", lock_id)
-        await asyncio.sleep(LOCK_DELAY)
-
-    # pulling
-    async def open(self, lock_id: int) -> None:
-        """Unlock the door and pull the door latch"""
-        _LOGGER.debug("Opening lock %s...", str(lock_id))
-        local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/unlock?mode=4", HTTPMethod.POST
-        )
-        if not local_call_success:
-            url = API_URL_LOCK + str(lock_id) + API_PATH_UNLOCK + "?mode=4"
-            await http_request(
-                url,
-                HTTPMethod.POST,
-                self._api_header,
-                self._session,
-                self._timeout,
-            )
-        _LOGGER.debug("Open command successful, id: %s", lock_id)
-        await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
-
-    async def pull(self, lock_id: int) -> None:
-        """Only pull the door latch"""
-        _LOGGER.debug("Pulling latch for lock %s...", str(lock_id))
-        local_call_success, _ = await self._local_api_call(
-            f"/lock/{lock_id}/pull", HTTPMethod.POST
-        )
-        if not local_call_success:
-            url = API_URL_LOCK + str(lock_id) + API_PATH_PULL
-            await http_request(
-                url,
-                HTTPMethod.POST,
-                self._api_header,
-                self._session,
-                self._timeout,
-            )
-        _LOGGER.debug("Open command not successful, id: %s", lock_id)
-        await asyncio.sleep(self._locks_dict[lock_id].duration_pullspring + 1)
-
-    def is_unlocked(self, lock_id: int) -> bool:
-        """Return is a specific lock is unlocked"""
-        lock = self._locks_dict[lock_id]
-        return lock.state == TedeeLockState.UNLOCKED
-
-    def is_locked(self, lock_id: int) -> bool:
-        """Return is a specific lock is locked"""
-        lock = self._locks_dict[lock_id]
-        return lock.state == TedeeLockState.LOCKED
-
-    def parse_lock_properties(self, json_properties: dict):
-        """Parse the lock properties"""
-        connected = bool(json_properties.get("isConnected", False))
-
-        lock_properties = json_properties.get("lockProperties")
-
-        if lock_properties is not None:
-            state = lock_properties.get("state", 9)
-            battery_level = lock_properties.get("batteryLevel", 50)
-            is_charging = lock_properties.get("isCharging", False)
-            state_change_result = lock_properties.get("stateChangeResult", 0)
-            door_state = lock_properties.get("doorState", 0)
-        else:
-            # local call does not have lock properties
-            state = json_properties.get("state", 9)
-            battery_level = json_properties.get("batteryLevel", 50)
-            is_charging = bool(json_properties.get("isCharging", False))
-            state_change_result = json_properties.get("jammed", 0)
-            door_state = json_properties.get("doorState", 0)
-
-        return connected, state, battery_level, is_charging, state_change_result, door_state
-
-    def parse_pull_spring_settings(self, settings: dict):
-        """Parse the pull spring settings"""
-        device_settings = settings.get("deviceSettings", {})
-        pull_spring_enabled = bool(device_settings.get("pullSpringEnabled", False))
-        pull_spring_auto_enabled = bool(device_settings.get("autoPullSpringEnabled", False))
-        pull_spring_duration = device_settings.get("pullSpringDuration", 5)
-        return pull_spring_enabled, pull_spring_auto_enabled, pull_spring_duration
-
-    def _calculate_secure_local_token(self) -> str:
-        """Calculate the secure token"""
-        if not self._local_token:
-            return ""
-        ms = time.time_ns() // 1_000_000
-        secure_token = self._local_token + str(ms)
-        secure_token = hashlib.sha256(secure_token.encode("utf-8")).hexdigest()
-        secure_token += str(ms)
-        return secure_token
-
-    def _get_local_api_header(self, secure: bool = True) -> dict[str, str]:
-        """Get the local api header"""
-        if not self._local_token:
-            return {}
-        token = self._calculate_secure_local_token() if secure else self._local_token
-        return {"Content-Type": "application/json", "api_token": token}
-
-    async def _local_api_call(
-        self, path: str, http_method: str, json_data=None
-    ) -> tuple[bool, Any | None]:
-        """Call the local api"""
-
-        if not self._use_local_api:
-            return False, None
-        for retry_number in range(1, NUM_RETRIES + 1):
-            try:
-                _LOGGER.debug("Getting locks from Local API...")
-                self._last_local_call = time.time()
-                r = await http_request(
-                    self._local_api_path + path,
-                    http_method,
-                    self._get_local_api_header(not self._api_token_mode_plain),
-                    self._session,
-                    self._timeout,
-                    json_data,
-                )
-            except TedeeAuthException as ex:
-                msg = "Local API authentication failed."
-                if not self._personal_token and (retry_number == NUM_RETRIES):
-                    raise TedeeLocalAuthException(msg) from ex
-
-                _LOGGER.debug(msg)
-            except (TedeeClientException, TedeeRateLimitException) as ex:
-                if not self._personal_token and (retry_number == NUM_RETRIES):
-                    _LOGGER.debug(
-                        "Error while calling local API endpoint %s. Error: %s. Full error: %s",
-                        path,
-                        {type(ex).__name__},
-                        str(ex),
-                        exc_info=True,
-                    )
-                    raise TedeeDataUpdateException(
-                        f"Error while calling local API endpoint {path}."
-                    ) from ex
-
-                _LOGGER.debug(
-                    "Error while calling local API endpoint %s, retrying with cloud call. Error: %s",
-                    path,
-                    type(ex).__name__,
-                )
-                _LOGGER.debug("Full error: %s", str(ex), exc_info=True)
-
-            else:
-                return True, r
-            await asyncio.sleep(0.5)
-        return False, None
+    # -- Webhooks --------------------------------------------------------------
 
     def parse_webhook_message(self, message: dict) -> None:
-        """Parse the webhook message sent from the bridge"""
-
-        message_type = message.get("event")
+        """Parse a webhook message sent from the bridge."""
+        event = message.get("event")
         data = message.get("data")
 
         if data is None:
             raise TedeeWebhookException("No data in webhook message.")
-
-        if message_type == "backend-connection-changed":
+        if event == "backend-connection-changed":
             return
 
-        lock_id = data.get("deviceId", 0)
-        lock = self._locks_dict.get(lock_id)
-
+        lock_id: int = data.get("deviceId", 0)
+        lock = self._locks.get(lock_id)
         if lock is None:
             return
 
-        if message_type == "device-connection-changed":
-            lock.is_connected = data.get("isConnected", 0) == 1
-        elif message_type == "device-settings-changed":
-            pass
-        elif message_type == "lock-status-changed":
-            lock.state = data.get("state", 0)
-            lock.state_change_result = data.get("jammed", 0)
-            lock.door_state = data.get("doorState", 0)
-        elif message_type == "device-battery-level-changed":
-            lock.battery_level = data.get("batteryLevel", 50)
-        elif message_type == "device-battery-start-charging":
-            lock.is_charging = True
-        elif message_type == "device-battery-stop-charging":
-            lock.is_charging = False
-        elif message_type == "device-battery-fully-charged":
-            lock.is_charging = False
-            lock.battery_level = 100
-
-        self._locks_dict[lock_id] = lock
+        _WEBHOOK_HANDLERS.get(event, _noop)(lock, data)
+        self._locks[lock_id] = lock
 
     async def update_webhooks(
         self, webhook_url: str, headers_bridge_sends: list | None = None
     ) -> None:
-        """Overrites all webhooks"""
-        if headers_bridge_sends is None:
-            headers_bridge_sends = []
-        _LOGGER.debug("Registering webhook %s", webhook_url)
-        data = [{"url": webhook_url, "headers": headers_bridge_sends}]
+        """Overwrite all webhooks with a single one."""
+        _LOGGER.debug("Updating webhooks to %s", webhook_url)
+        data = [{"url": webhook_url, "headers": headers_bridge_sends or []}]
         await self._local_api_call("/callback", HTTPMethod.PUT, data)
-        _LOGGER.debug("Webhook registered successfully.")
+        _LOGGER.debug("Webhooks updated successfully.")
 
     async def register_webhook(
         self, webhook_url: str, headers_bridge_sends: list | None = None
     ) -> int:
-        """Register a webhook, return the webhook id"""
-        if headers_bridge_sends is None:
-            headers_bridge_sends = []
+        """Register a webhook and return the webhook ID."""
         _LOGGER.debug("Registering webhook %s", webhook_url)
-        data = {"url": webhook_url, "headers": headers_bridge_sends}
+        data = {"url": webhook_url, "headers": headers_bridge_sends or []}
         try:
             success, result = await self._local_api_call(
                 "/callback", HTTPMethod.POST, data
@@ -505,18 +279,18 @@ class TedeeClient:
         if isinstance(result, dict) and "id" in result:
             return result["id"]
 
-        # get the webhook id
-        result = await self.get_webhooks()
-        for webhook in result:
+        for webhook in await self.get_webhooks():
             if webhook["url"] == webhook_url:
                 return webhook["id"]
         raise TedeeWebhookException("Webhook id not found")
 
     async def get_webhooks(self) -> list[dict[str, Any]]:
-        """Get a list of all webhooks"""
+        """Get all registered webhooks."""
         _LOGGER.debug("Getting webhooks...")
         try:
-            success, result = await self._local_api_call("/callback", HTTPMethod.GET)
+            success, result = await self._local_api_call(
+                "/callback", HTTPMethod.GET
+            )
         except TedeeDataUpdateException as ex:
             raise TedeeWebhookException("Unable to get webhooks") from ex
         if not success or result is None:
@@ -525,30 +299,34 @@ class TedeeClient:
         return result
 
     async def delete_webhooks(self) -> None:
-        """Delete all webhooks"""
+        """Delete all webhooks."""
         _LOGGER.debug("Deleting webhooks...")
         try:
             await self._local_api_call("/callback", HTTPMethod.PUT, [])
         except TedeeDataUpdateException as ex:
-            _LOGGER.debug("Unable to delete webhooks: %s", str(ex))
+            _LOGGER.debug("Unable to delete webhooks: %s", ex)
         _LOGGER.debug("Webhooks deleted successfully.")
 
     async def delete_webhook(self, webhook_id: int) -> None:
-        """Delete a specific webhook"""
-        _LOGGER.debug("Deleting webhook %s", str(webhook_id))
+        """Delete a specific webhook."""
+        _LOGGER.debug("Deleting webhook %s", webhook_id)
         try:
-            await self._local_api_call(f"/callback/{webhook_id}", HTTPMethod.DELETE)
+            await self._local_api_call(
+                f"/callback/{webhook_id}", HTTPMethod.DELETE
+            )
         except TedeeDataUpdateException as ex:
-            _LOGGER.debug("Unable to delete webhook: %s", str(ex))
+            _LOGGER.debug("Unable to delete webhook: %s", ex)
         _LOGGER.debug("Webhook deleted successfully.")
 
     async def cleanup_webhooks_by_host(self, host: str) -> None:
-        """Delete all webhooks for a specific host"""
+        """Delete all webhooks whose URL contains *host*."""
         _LOGGER.debug("Deleting webhooks for host %s", host)
         try:
-            success, result = await self._local_api_call("/callback", HTTPMethod.GET)
+            success, result = await self._local_api_call(
+                "/callback", HTTPMethod.GET
+            )
         except TedeeDataUpdateException as ex:
-            _LOGGER.debug("Unable to get webhooks: %s", str(ex))
+            _LOGGER.debug("Unable to get webhooks: %s", ex)
             return
         if not success or result is None:
             _LOGGER.debug("Unable to get webhooks")
@@ -556,4 +334,172 @@ class TedeeClient:
         for webhook in result:
             if host in webhook["url"]:
                 await self.delete_webhook(webhook["id"])
-        _LOGGER.debug("Webhooks deleted successfully.")
+
+    # -- Internal helpers ------------------------------------------------------
+
+    def _filter_by_bridge(self, locks: list[dict]) -> list[dict]:
+        """Filter lock dicts to those belonging to the configured bridge."""
+        if not self._bridge_id:
+            return locks
+        return [
+            lock
+            for lock in locks
+            if lock.get("connectedToId") is None
+            or lock.get("connectedToId") == self._bridge_id
+        ]
+
+    async def _lock_operation(
+        self,
+        lock_id: int,
+        *,
+        local_path: str,
+        cloud_path: str,
+        name: str,
+        delay: float,
+    ) -> None:
+        """Execute a lock operation (unlock, lock, open, pull)."""
+        _LOGGER.debug("%s lock %s...", name, lock_id)
+        success, _ = await self._local_api_call(local_path, HTTPMethod.POST)
+        if not success:
+            url = f"{API_URL_LOCK}{lock_id}{cloud_path}"
+            await http_request(
+                url,
+                HTTPMethod.POST,
+                self._cloud_headers,
+                self._session,
+                self._timeout,
+            )
+        _LOGGER.debug("%s command successful, id: %s", name, lock_id)
+        await asyncio.sleep(delay)
+
+    async def _api_call(
+        self,
+        *,
+        local_path: str,
+        cloud_url: str,
+        http_method: str,
+        json_data: Any = None,
+    ) -> tuple[Any, bool]:
+        """Make an API call with local-first, cloud-fallback strategy.
+
+        Returns:
+            A tuple of (result_data, is_local_call).
+        """
+        success, result = await self._local_api_call(
+            local_path, http_method, json_data
+        )
+        if success:
+            return result, True
+
+        r = await http_request(
+            cloud_url,
+            http_method,
+            self._cloud_headers,
+            self._session,
+            self._timeout,
+            json_data,
+        )
+        return r["result"] if isinstance(r, dict) else r, False
+
+    async def _local_api_call(
+        self, path: str, http_method: str, json_data: Any = None
+    ) -> tuple[bool, Any | None]:
+        """Call the local bridge API with retries.
+
+        Returns:
+            A tuple of (success, response_data).
+        """
+        if not self._use_local_api:
+            return False, None
+
+        for attempt in range(1, NUM_RETRIES + 1):
+            try:
+                _LOGGER.debug("Local API call: %s %s", http_method, path)
+                result = await http_request(
+                    self._local_api_base + path,
+                    http_method,
+                    self._local_api_header,
+                    self._session,
+                    self._timeout,
+                    json_data,
+                )
+            except TedeeAuthException as ex:
+                if not self._personal_token and attempt == NUM_RETRIES:
+                    raise TedeeLocalAuthException(
+                        "Local API authentication failed."
+                    ) from ex
+                _LOGGER.debug("Local API authentication failed.")
+            except (TedeeClientException, TedeeRateLimitException) as ex:
+                if not self._personal_token and attempt == NUM_RETRIES:
+                    raise TedeeDataUpdateException(
+                        f"Error while calling local API endpoint {path}."
+                    ) from ex
+                _LOGGER.debug(
+                    "Error calling local API %s, retrying with cloud. Error: %s",
+                    path,
+                    type(ex).__name__,
+                    exc_info=True,
+                )
+            else:
+                return True, result
+            await asyncio.sleep(0.5)
+
+        return False, None
+
+    @property
+    def _local_api_header(self) -> dict[str, str]:
+        """Build the local API authentication header."""
+        if not self._local_token:
+            return {}
+        if self._api_token_mode_plain:
+            token = self._local_token
+        else:
+            ms = time.time_ns() // 1_000_000
+            raw = f"{self._local_token}{ms}"
+            token = hashlib.sha256(raw.encode()).hexdigest() + str(ms)
+        return {"Content-Type": "application/json", "api_token": token}
+
+
+# -- Webhook event handlers ---------------------------------------------------
+
+
+def _handle_connection_changed(lock: TedeeLock, data: dict) -> None:
+    lock.is_connected = data.get("isConnected", 0) == 1
+
+
+def _handle_lock_status_changed(lock: TedeeLock, data: dict) -> None:
+    lock.state = TedeeLockState(data.get("state", 0))
+    lock.state_change_result = data.get("jammed", 0)
+    lock.door_state = TedeeDoorState(data.get("doorState", 0))
+
+
+def _handle_battery_level_changed(lock: TedeeLock, data: dict) -> None:
+    lock.battery_level = data.get("batteryLevel")
+
+
+def _handle_battery_start_charging(lock: TedeeLock, _data: dict) -> None:
+    lock.is_charging = True
+
+
+def _handle_battery_stop_charging(lock: TedeeLock, _data: dict) -> None:
+    lock.is_charging = False
+
+
+def _handle_battery_fully_charged(lock: TedeeLock, _data: dict) -> None:
+    lock.is_charging = False
+    lock.battery_level = 100
+
+
+def _noop(_lock: TedeeLock, _data: dict) -> None:
+    pass
+
+
+_WEBHOOK_HANDLERS: dict[str, Any] = {
+    "device-connection-changed": _handle_connection_changed,
+    "lock-status-changed": _handle_lock_status_changed,
+    "device-battery-level-changed": _handle_battery_level_changed,
+    "device-battery-start-charging": _handle_battery_start_charging,
+    "device-battery-stop-charging": _handle_battery_stop_charging,
+    "device-battery-fully-charged": _handle_battery_fully_charged,
+    "device-settings-changed": _noop,
+}

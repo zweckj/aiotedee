@@ -15,7 +15,7 @@ import asyncio
 import hashlib
 import logging
 import time
-from collections.abc import abstractmethod
+from abc import abstractmethod
 from http import HTTPMethod
 from typing import Any, ValuesView
 

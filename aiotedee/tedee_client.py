@@ -24,7 +24,6 @@ from .const import (
     LOCK_DELAY,
     TIMEOUT,
     UNLOCK_DELAY,
-    API_TOKEN_MODE_PLAIN,
 )
 from .exception import (
     TedeeAuthException,

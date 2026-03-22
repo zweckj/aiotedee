@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 from aiohttp import ClientSession
+from aioresponses import aioresponses
 
 from aiotedee import TedeeLock, TedeeLockState
+from aiotedee.client import TedeeCloudClient, TedeeLocalClient
 
 
 # -- Fake API response payloads ------------------------------------------------
@@ -56,14 +56,17 @@ BRIDGE_JSON = {
     "name": "My Bridge",
 }
 
+LOCAL_API_BASE = "http://192.168.1.1:80/v1.0"
+
 
 # -- Fixtures ------------------------------------------------------------------
 
 
 @pytest.fixture
-def mock_session():
-    """Return a mock aiohttp ClientSession."""
-    return MagicMock(spec=ClientSession)
+def mock_api():
+    """Yield an aioresponses context for mocking aiohttp calls."""
+    with aioresponses() as m:
+        yield m
 
 
 @pytest.fixture
@@ -82,3 +85,28 @@ def sample_lock():
         is_enabled_auto_pullspring=False,
         duration_pullspring=7,
     )
+
+
+@pytest.fixture
+async def local_client():
+    """Return a TedeeLocalClient with a real aiohttp session."""
+    session = ClientSession()
+    client = TedeeLocalClient(
+        local_token="tok",
+        local_ip="192.168.1.1",
+        session=session,
+    )
+    yield client
+    await session.close()
+
+
+@pytest.fixture
+async def cloud_client():
+    """Return a TedeeCloudClient with a real aiohttp session."""
+    session = ClientSession()
+    client = TedeeCloudClient(
+        personal_token="cloud-key",
+        session=session,
+    )
+    yield client
+    await session.close()

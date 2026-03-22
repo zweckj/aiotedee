@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from http import HTTPMethod
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp import ClientSession
@@ -15,23 +14,17 @@ from aiotedee import (
     TedeeWebhookException,
 )
 from aiotedee.client import TedeeCloudClient, TedeeLocalClient
+from aiotedee.const import API_URL_BRIDGE, API_URL_LOCK, API_URL_SYNC
+from aiotedee.exceptions import TedeeDataUpdateException
 
-from .conftest import BRIDGE_JSON, LOCK_CLOUD_JSON, LOCK_LOCAL_JSON
-
-
-# -- Helpers -------------------------------------------------------------------
-
-
-def _make_local_client(mock_session, **overrides):
-    defaults = dict(local_token="tok", local_ip="192.168.1.1", session=mock_session)
-    defaults.update(overrides)
-    return TedeeLocalClient(**defaults)
+from .conftest import BRIDGE_JSON, LOCAL_API_BASE, LOCK_CLOUD_JSON, LOCK_LOCAL_JSON
 
 
-def _make_cloud_client(mock_session, **overrides):
-    defaults = dict(personal_token="cloud-key", session=mock_session)
-    defaults.update(overrides)
-    return TedeeCloudClient(**defaults)
+@pytest.fixture(autouse=True)
+def _no_sleep():
+    """Prevent real asyncio.sleep delays in lock operations."""
+    with patch("aiotedee.client.asyncio.sleep", new_callable=AsyncMock):
+        yield
 
 
 # =============================================================================
@@ -48,28 +41,26 @@ def _make_cloud_client(mock_session, **overrides):
     ],
     ids=["no-filter", "filter-matching", "null-passes-through"],
 )
-def test_filter_by_bridge(mock_session, bridge_id, locks, expected_ids):
-    client = _make_local_client(mock_session, bridge_id=bridge_id)
-    result = client._filter_by_bridge(locks)
+def test_filter_by_bridge(local_client, bridge_id, locks, expected_ids):
+    local_client._bridge_id = bridge_id
+    result = local_client._filter_by_bridge(locks)
     assert [l["connectedToId"] for l in result] == expected_ids
 
 
-def test_webhook_dispatches_lock_status_changed(mock_session):
-    client = _make_local_client(mock_session)
-    client._locks[1] = TedeeLock(
+def test_webhook_dispatches_lock_status_changed(local_client):
+    local_client._locks[1] = TedeeLock(
         name="L", id=1, type=2, state=TedeeLockState.LOCKED
     )
-    client.parse_webhook_message({
+    local_client.parse_webhook_message({
         "event": "lock-status-changed",
         "data": {"deviceId": 1, "state": 2, "jammed": 0, "doorState": 3},
     })
-    assert client._locks[1].state == TedeeLockState.UNLOCKED
+    assert local_client._locks[1].state == TedeeLockState.UNLOCKED
 
 
-def test_webhook_missing_data_raises(mock_session):
-    client = _make_local_client(mock_session)
+def test_webhook_missing_data_raises(local_client):
     with pytest.raises(TedeeWebhookException):
-        client.parse_webhook_message({"event": "lock-status-changed"})
+        local_client.parse_webhook_message({"event": "lock-status-changed"})
 
 
 @pytest.mark.parametrize(
@@ -81,13 +72,12 @@ def test_webhook_missing_data_raises(mock_session):
     ],
     ids=["backend-connection", "unknown-device", "unknown-event"],
 )
-def test_webhook_silently_ignored_messages(mock_session, event, data):
-    client = _make_local_client(mock_session)
-    client._locks[1] = TedeeLock(
+def test_webhook_silently_ignored_messages(local_client, event, data):
+    local_client._locks[1] = TedeeLock(
         name="L", id=1, type=2, state=TedeeLockState.LOCKED
     )
-    client.parse_webhook_message({"event": event, "data": data})
-    assert client._locks[1].state == TedeeLockState.LOCKED
+    local_client.parse_webhook_message({"event": event, "data": data})
+    assert local_client._locks[1].state == TedeeLockState.LOCKED
 
 
 # =============================================================================
@@ -95,52 +85,34 @@ def test_webhook_silently_ignored_messages(mock_session, event, data):
 # =============================================================================
 
 
-async def test_local_get_locks_success(mock_session):
-    client = _make_local_client(mock_session)
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (True, [LOCK_LOCAL_JSON])
-        await client.get_locks()
-    assert 12345 in client.locks_dict
-    assert client.locks_dict[12345].name == "Front Door"
+async def test_local_get_locks(mock_api, local_client):
+    mock_api.get(f"{LOCAL_API_BASE}/lock", payload=[LOCK_LOCAL_JSON])
+    await local_client.get_locks()
+    assert 12345 in local_client.locks_dict
+    assert local_client.locks_dict[12345].name == "Front Door"
 
 
-@pytest.mark.parametrize(
-    ("return_value", "match"),
-    [
-        ((False, None), "No data returned from local API"),
-        ((True, []), "No lock found"),
-    ],
-    ids=["api-failure", "empty-result"],
-)
-async def test_local_get_locks_failure(mock_session, return_value, match):
-    client = _make_local_client(mock_session)
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = return_value
-        with pytest.raises(TedeeClientException, match=match):
-            await client.get_locks()
+async def test_local_get_locks_empty_raises(mock_api, local_client):
+    mock_api.get(f"{LOCAL_API_BASE}/lock", payload=[])
+    with pytest.raises(TedeeClientException, match="No lock found"):
+        await local_client.get_locks()
 
 
-async def test_local_sync_updates_existing_lock(mock_session):
-    client = _make_local_client(mock_session)
-    client._locks[12345] = TedeeLock(
+async def test_local_sync_updates_existing_lock(mock_api, local_client):
+    local_client._locks[12345] = TedeeLock(
         name="Front Door", id=12345, type=2, state=TedeeLockState.LOCKED
     )
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (True, [{**LOCK_LOCAL_JSON, "state": 2}])
-        await client.sync()
-    assert client._locks[12345].state == TedeeLockState.UNLOCKED
+    mock_api.get(
+        f"{LOCAL_API_BASE}/lock",
+        payload=[{**LOCK_LOCAL_JSON, "state": 2}],
+    )
+    await local_client.sync()
+    assert local_client._locks[12345].state == TedeeLockState.UNLOCKED
 
 
-async def test_local_sync_includes_settings(mock_session):
+async def test_local_sync_includes_settings(mock_api, local_client):
     """Local sync passes include_settings=True, updating deviceSettings."""
-    client = _make_local_client(mock_session)
-    client._locks[12345] = TedeeLock(
+    local_client._locks[12345] = TedeeLock(
         name="Front Door", id=12345, type=2, is_enabled_pullspring=True
     )
     updated = {
@@ -151,80 +123,63 @@ async def test_local_sync_includes_settings(mock_session):
             "pullSpringDuration": 3,
         },
     }
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (True, [updated])
-        await client.sync()
-    assert client._locks[12345].is_enabled_pullspring is False
+    mock_api.get(f"{LOCAL_API_BASE}/lock", payload=[updated])
+    await local_client.sync()
+    assert local_client._locks[12345].is_enabled_pullspring is False
 
 
-async def test_local_sync_skips_unknown_lock_ids(mock_session):
-    client = _make_local_client(mock_session)
-    client._locks[1] = TedeeLock(name="L", id=1, type=2)
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (True, [{"id": 9999, "state": 2}])
-        await client.sync()
-    assert 9999 not in client._locks
+async def test_local_sync_skips_unknown_lock_ids(mock_api, local_client):
+    local_client._locks[1] = TedeeLock(name="L", id=1, type=2)
+    mock_api.get(
+        f"{LOCAL_API_BASE}/lock",
+        payload=[{"id": 9999, "state": 2}],
+    )
+    await local_client.sync()
+    assert 9999 not in local_client._locks
 
 
 @pytest.mark.parametrize(
-    ("method", "expected_path", "expected_delay"),
+    ("method", "expected_path"),
     [
-        ("lock", "/lock/1/lock", 5),
-        ("unlock", "/lock/1/unlock?mode=3", 5),
-        ("open", "/lock/1/unlock?mode=4", 5),  # duration_pullspring(4) + 1
-        ("pull", "/lock/1/pull", 5),
+        ("lock", "/lock/1/lock"),
+        ("unlock", "/lock/1/unlock?mode=3"),
+        ("open", "/lock/1/unlock?mode=4"),
+        ("pull", "/lock/1/pull"),
     ],
     ids=["lock", "unlock", "open", "pull"],
 )
-async def test_local_lock_operation_paths_and_delays(
-    mock_session, method, expected_path, expected_delay
-):
-    client = _make_local_client(mock_session)
-    client._locks[1] = TedeeLock(
+async def test_local_lock_operations(mock_api, local_client, method, expected_path):
+    local_client._locks[1] = TedeeLock(
         name="L", id=1, type=2, duration_pullspring=4
     )
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (True, None)
-        with patch(
-            "aiotedee.client.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep:
-            await getattr(client, method)(1)
-    mock_call.assert_called_once_with(expected_path, HTTPMethod.POST)
-    mock_sleep.assert_called_once_with(expected_delay)
+    mock_api.post(f"{LOCAL_API_BASE}{expected_path}", payload=None)
+    await getattr(local_client, method)(1)
 
 
-async def test_local_lock_operation_failure_raises(mock_session):
-    client = _make_local_client(mock_session)
-    client._locks[1] = TedeeLock(name="L", id=1, type=2)
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (False, None)
-        with pytest.raises(TedeeClientException):
-            await client.lock(1)
+async def test_local_lock_operation_failure_raises(mock_api, local_client):
+    local_client._locks[1] = TedeeLock(name="L", id=1, type=2)
+    # _local_api_call retries NUM_RETRIES(3) times, then wraps in TedeeDataUpdateException
+    for _ in range(3):
+        mock_api.post(f"{LOCAL_API_BASE}/lock/1/lock", status=500)
+    with pytest.raises(TedeeDataUpdateException):
+        await local_client.lock(1)
 
 
-async def test_local_get_bridge(mock_session):
-    client = _make_local_client(mock_session)
-    with patch.object(
-        client, "_local_api_call", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = (True, BRIDGE_JSON)
-        bridge = await client.get_local_bridge()
+async def test_local_get_bridge(mock_api, local_client):
+    mock_api.get(f"{LOCAL_API_BASE}/bridge", payload=BRIDGE_JSON)
+    bridge = await local_client.get_local_bridge()
     assert bridge.id == 99
     assert bridge.serial == "12345678-0001"
 
 
-async def test_local_get_bridge_not_configured_raises(mock_session):
-    client = _make_local_client(mock_session, local_token="", local_ip="")
+async def test_local_get_bridge_not_configured_raises():
+    session = ClientSession()
+    client = TedeeLocalClient(
+        local_token="", local_ip="", session=session
+    )
     with pytest.raises(TedeeClientException, match="Local API not configured"):
         await client.get_local_bridge()
+    await session.close()
 
 
 @pytest.mark.parametrize(
@@ -232,9 +187,9 @@ async def test_local_get_bridge_not_configured_raises(mock_session):
     [(True, "tok"), (False, None)],
     ids=["plain", "hashed"],
 )
-def test_local_api_header_token_mode(mock_session, plain_mode, token_value):
-    client = _make_local_client(mock_session, api_token_mode_plain=plain_mode)
-    header = client._local_api_header
+def test_local_api_header_token_mode(local_client, plain_mode, token_value):
+    local_client._api_token_mode_plain = plain_mode
+    header = local_client._local_api_header
     if token_value:
         assert header["api_token"] == token_value
     else:
@@ -242,9 +197,13 @@ def test_local_api_header_token_mode(mock_session, plain_mode, token_value):
         assert len(header["api_token"]) > 64
 
 
-def test_local_api_header_no_token_returns_empty(mock_session):
-    client = _make_local_client(mock_session, local_token="")
+async def test_local_api_header_no_token_returns_empty():
+    session = ClientSession()
+    client = TedeeLocalClient(
+        local_token="", local_ip="192.168.1.1", session=session
+    )
     assert client._local_api_header == {}
+    await session.close()
 
 
 # =============================================================================
@@ -252,28 +211,28 @@ def test_local_api_header_no_token_returns_empty(mock_session):
 # =============================================================================
 
 
-async def test_cloud_get_locks_success(mock_session):
-    client = _make_cloud_client(mock_session)
-    with patch("aiotedee.client.http_request", new_callable=AsyncMock) as mock_req:
-        mock_req.return_value = {"result": [LOCK_CLOUD_JSON]}
-        await client.get_locks()
-    assert 12345 in client.locks_dict
+async def test_cloud_get_locks(mock_api, cloud_client):
+    mock_api.get(API_URL_LOCK, payload={"result": [LOCK_CLOUD_JSON]})
+    await cloud_client.get_locks()
+    assert 12345 in cloud_client.locks_dict
 
 
-async def test_cloud_get_locks_bridge_filter(mock_session):
-    client = _make_cloud_client(mock_session, bridge_id=99)
+async def test_cloud_get_locks_bridge_filter(mock_api):
+    session = ClientSession()
+    client = TedeeCloudClient(
+        personal_token="cloud-key", bridge_id=99, session=session
+    )
     other_lock = {**LOCK_CLOUD_JSON, "id": 99999, "connectedToId": 50}
-    with patch("aiotedee.client.http_request", new_callable=AsyncMock) as mock_req:
-        mock_req.return_value = {"result": [LOCK_CLOUD_JSON, other_lock]}
-        await client.get_locks()
+    mock_api.get(API_URL_LOCK, payload={"result": [LOCK_CLOUD_JSON, other_lock]})
+    await client.get_locks()
     assert 12345 in client.locks_dict
     assert 99999 not in client.locks_dict
+    await session.close()
 
 
-async def test_cloud_sync_does_not_include_settings(mock_session):
+async def test_cloud_sync_does_not_include_settings(mock_api, cloud_client):
     """Cloud sync passes include_settings=False."""
-    client = _make_cloud_client(mock_session)
-    client._locks[12345] = TedeeLock(
+    cloud_client._locks[12345] = TedeeLock(
         name="Front Door",
         id=12345,
         type=2,
@@ -296,28 +255,22 @@ async def test_cloud_sync_does_not_include_settings(mock_session):
             "pullSpringDuration": 1,
         },
     }
-    with patch("aiotedee.client.http_request", new_callable=AsyncMock) as mock_req:
-        mock_req.return_value = {"result": [sync_response]}
-        await client.sync()
-    assert client._locks[12345].state == TedeeLockState.UNLOCKED
+    mock_api.get(API_URL_SYNC, payload={"result": [sync_response]})
+    await cloud_client.sync()
+    assert cloud_client._locks[12345].state == TedeeLockState.UNLOCKED
     # Settings NOT updated (cloud sync)
-    assert client._locks[12345].is_enabled_pullspring is True
-    assert client._locks[12345].duration_pullspring == 7
+    assert cloud_client._locks[12345].is_enabled_pullspring is True
+    assert cloud_client._locks[12345].duration_pullspring == 7
 
 
-async def test_cloud_get_bridges(mock_session):
-    client = _make_cloud_client(mock_session)
-    with patch("aiotedee.client.http_request", new_callable=AsyncMock) as mock_req:
-        mock_req.return_value = {"result": [BRIDGE_JSON]}
-        bridges = await client.get_bridges()
+async def test_cloud_get_bridges(mock_api, cloud_client):
+    mock_api.get(API_URL_BRIDGE, payload={"result": [BRIDGE_JSON]})
+    bridges = await cloud_client.get_bridges()
     assert len(bridges) == 1
     assert bridges[0].id == 99
 
 
-async def test_cloud_lock_sends_correct_url(mock_session):
-    client = _make_cloud_client(mock_session)
-    client._locks[1] = TedeeLock(name="L", id=1, type=2)
-    with patch("aiotedee.client.http_request", new_callable=AsyncMock) as mock_req:
-        with patch("aiotedee.client.asyncio.sleep", new_callable=AsyncMock):
-            await client.lock(1)
-    assert "/1/operation/lock" in mock_req.call_args[0][0]
+async def test_cloud_lock_sends_correct_url(mock_api, cloud_client):
+    cloud_client._locks[1] = TedeeLock(name="L", id=1, type=2)
+    mock_api.post(f"{API_URL_LOCK}1/operation/lock", payload=None)
+    await cloud_client.lock(1)

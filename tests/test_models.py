@@ -56,8 +56,11 @@ def test_safe_door_state(value, expected):
     [LOCK_CLOUD_JSON, LOCK_LOCAL_JSON],
     ids=["cloud", "local"],
 )
-def test_from_api_response_parses_core_fields(payload):
+def test_from_api_response(payload):
+    """Both cloud and local payloads parse all fields correctly."""
     lock = TedeeLock.from_api_response(payload)
+
+    # Core fields
     assert lock.id == 12345
     assert lock.name == "Front Door"
     assert lock.type == 2
@@ -65,17 +68,13 @@ def test_from_api_response_parses_core_fields(payload):
     assert lock.battery_level == 80
     assert lock.is_connected is True
 
-
-@pytest.mark.parametrize(
-    "payload",
-    [LOCK_CLOUD_JSON, LOCK_LOCAL_JSON],
-    ids=["cloud", "local"],
-)
-def test_from_api_response_parses_pullspring_settings(payload):
-    lock = TedeeLock.from_api_response(payload)
+    # Pullspring settings
     assert lock.is_enabled_pullspring is True
     assert lock.is_enabled_auto_pullspring is False
     assert lock.duration_pullspring == 7
+
+    # Not jammed (stateChangeResult=0 / jammed=0)
+    assert lock.is_jammed is False
 
 
 @pytest.mark.parametrize(
@@ -84,16 +83,12 @@ def test_from_api_response_parses_pullspring_settings(payload):
         (LOCK_CLOUD_JSON, "stateChangeResult"),
         (LOCK_LOCAL_JSON, "jammed"),
     ],
-    ids=["cloud", "local"],
+    ids=["cloud-stateChangeResult", "local-jammed"],
 )
 def test_from_api_response_detects_jammed(payload, jammed_key):
-    """Cloud uses stateChangeResult, local uses jammed — both detected."""
+    """Cloud uses stateChangeResult=1, local uses jammed=1 — both detected."""
     if "lockProperties" in payload:
-        modified = {**payload}
-        modified["lockProperties"] = {
-            **modified["lockProperties"],
-            jammed_key: 1,
-        }
+        modified = {**payload, "lockProperties": {**payload["lockProperties"], jammed_key: 1}}
     else:
         modified = {**payload, jammed_key: 1}
     lock = TedeeLock.from_api_response(modified)

@@ -23,7 +23,10 @@ from .conftest import BRIDGE_JSON, LOCAL_API_BASE, LOCK_CLOUD_JSON, LOCK_LOCAL_J
 @pytest.fixture(autouse=True)
 def _no_sleep():
     """Prevent real asyncio.sleep delays in lock operations."""
-    with patch("aiotedee.client.asyncio.sleep", new_callable=AsyncMock):
+    with (
+        patch("aiotedee.client.base.asyncio.sleep", new_callable=AsyncMock),
+        patch("aiotedee.client.local.asyncio.sleep", new_callable=AsyncMock),
+    ):
         yield
 
 

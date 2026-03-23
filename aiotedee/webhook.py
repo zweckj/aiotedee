@@ -5,9 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .models import (
-    TedeeDoorState,
     TedeeLock,
-    TedeeLockState,
     _safe_door_state,
     _safe_lock_state,
 )

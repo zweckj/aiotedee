@@ -38,12 +38,21 @@ class TedeeDoorState(IntEnum):
     UNCALIBRATED = 4
 
 
-# -- Helpers -------------------------------------------------------------------
+class TedeeDeviceType(IntEnum):
+    """Tedee Device Type."""
 
-_LOCK_TYPE_NAMES: dict[int, str] = {
-    2: "Tedee PRO",
-    4: "Tedee GO",
-}
+    UNKNOWN = 0
+    BRIDGE = 1
+    LOCK_PRO = 2
+    KEYPAD = 3
+    LOCK_GO = 4
+    GATE = 5
+    DRY_CONTACT = 6
+    DOOR_SENSOR = 8
+    KEYPAD_PRO = 10
+
+
+# -- Helpers -------------------------------------------------------------------
 
 DEFAULT_PULLSPRING_DURATION = 5
 
@@ -54,6 +63,14 @@ def _safe_lock_state(value: int) -> TedeeLockState:
         return TedeeLockState(value)
     except ValueError:
         return TedeeLockState.UNKNOWN
+
+
+def _safe_device_type(value: int) -> TedeeDeviceType:
+    """Convert an int to TedeeDeviceType, falling back to UNKNOWN."""
+    try:
+        return TedeeDeviceType(value)
+    except ValueError:
+        return TedeeDeviceType.UNKNOWN
 
 
 def _safe_door_state(value: int) -> TedeeDoorState:
@@ -108,7 +125,7 @@ class TedeeLock(DataClassDictMixin):
 
     name: str
     id: int
-    type: int
+    type: TedeeDeviceType = TedeeDeviceType.UNKNOWN
     state: TedeeLockState = TedeeLockState.UNCALIBRATED
     battery_level: int | None = None
     is_connected: bool = False
@@ -122,7 +139,8 @@ class TedeeLock(DataClassDictMixin):
     @property
     def type_name(self) -> str:
         """Return the human-readable type of the lock."""
-        return _LOCK_TYPE_NAMES.get(self.type, "Unknown Model")
+        _names = {TedeeDeviceType.LOCK_PRO: "Tedee PRO", TedeeDeviceType.LOCK_GO: "Tedee GO"}
+        return _names.get(self.type, "Unknown Model")
 
     @property
     def is_locked(self) -> bool:
@@ -148,7 +166,7 @@ class TedeeLock(DataClassDictMixin):
         return cls(
             name=data["name"],
             id=data["id"],
-            type=data.get("type", 0),
+            type=_safe_device_type(data.get("type", 0)),
             state=state,
             battery_level=battery,
             is_connected=bool(data.get("isConnected", False)),

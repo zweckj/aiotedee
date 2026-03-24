@@ -9,6 +9,7 @@ from aiotedee.models import (
     TedeeDoorState,
     TedeeLock,
     TedeeLockState,
+    TedeeDeviceType,
     _safe_door_state,
     _safe_lock_state,
 )
@@ -63,7 +64,7 @@ def test_from_api_response(payload):
     # Core fields
     assert lock.id == 12345
     assert lock.name == "Front Door"
-    assert lock.type == 2
+    assert lock.type == TedeeDeviceType.LOCK_PRO
     assert lock.state == TedeeLockState.LOCKED
     assert lock.battery_level == 80
     assert lock.is_connected is True
@@ -108,7 +109,7 @@ def test_lock_type_names(type_id, expected_name):
 def test_missing_optional_fields_use_defaults():
     """Minimal payload still parses without errors."""
     lock = TedeeLock.from_api_response({"id": 1, "name": "Minimal"})
-    assert lock.type == 0
+    assert lock.type == TedeeDeviceType.UNKNOWN
     assert lock.state == TedeeLockState.UNKNOWN
     assert lock.battery_level is None
     assert lock.is_connected is False

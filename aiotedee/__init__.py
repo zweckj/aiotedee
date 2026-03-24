@@ -9,7 +9,7 @@ from .exceptions import (
     TedeeRateLimitException,
     TedeeWebhookException,
 )
-from .models import TedeeBridge, TedeeDoorState, TedeeLock, TedeeLockState
+from .models import TedeeBridge, TedeeDeviceType, TedeeDoorState, TedeeLock, TedeeLockState
 
 __all__ = [
     "TedeeBridge",
@@ -18,6 +18,7 @@ __all__ = [
     "TedeeLocalClient",
     "TedeeLock",
     "TedeeLockState",
+    "TedeeDeviceType",
     "TedeeAuthException",
     "TedeeClientException",
     "TedeeDataUpdateException",

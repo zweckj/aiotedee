@@ -1,6 +1,6 @@
 [project]
 name = "aiotedee"
-version = "0.2.27"
+version = "0.3.0"
 license = "MIT"
 description = "A package to interact with Tedee locks using asyncio"
 readme = "README.md"
@@ -19,7 +19,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = ["aiohttp >= 3.8.1"]
+dependencies = ["aiohttp >= 3.8.1", "mashumaro >= 3.13"]
 requires-python = ">= 3.9"
 
 [project.urls]
@@ -29,6 +29,7 @@ Documentation = "https://github.com/zweckj/aiotedee"
 
 [project.optional-dependencies]
 dev = [
+    "aioresponses >= 0.7.8",
     "covdefaults == 2.3.0",
     "coverage == 7.6.7",
     "syrupy == 4.7.2",
@@ -36,3 +37,6 @@ dev = [
     "pytest-asyncio == 0.24.0",
     "pytest-cov == 6.0.0",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
